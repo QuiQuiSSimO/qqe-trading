@@ -174,7 +174,7 @@ with st.sidebar:
     </div>""", unsafe_allow_html=True)
 
     st.markdown('<div style="font-family:\'Share Tech Mono\',monospace;font-size:9px;color:#94a3b8;letter-spacing:2px;margin-bottom:4px;">API KEY</div>', unsafe_allow_html=True)
-    api_in = st.text_input("", value=st.session_state.api_key,
+    api_in = st.text_input("API Key", value=st.session_state.api_key,
                             placeholder="sk-ant-api03-...", type="password",
                             label_visibility="collapsed", key="api_input")
     if api_in: st.session_state.api_key = api_in
@@ -1206,4 +1206,3 @@ font-family:'Share Tech Mono',monospace;font-size:9px;color:#94a3b8;
 text-align:center;letter-spacing:1px;">
 QQE 03/04 v3 · HECTOR TRADING COMMAND · DIARIO + BINARIAS 1MIN + COPY TRADING
 </div>""", unsafe_allow_html=True)
-
