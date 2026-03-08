@@ -543,8 +543,8 @@ with st.sidebar:
     api_in = st.text_input("Clave API", value=st.session_state.api_key,
                            placeholder="sk-ant-api03-...", type="password", label_visibility="collapsed")
     if api_in: st.session_state.api_key = api_in
-    ia_ok = st.session_state.api_key.startswith("sk-ant-")
-    st.markdown(f'<div style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:{"#34d399" if ia_ok else "#475569"};margin-bottom:8px;">{"IA ACTIVA" if ia_ok else "Sin clave"}</div>', unsafe_allow_html=True)
+    ia_ok_sb = st.session_state.api_key.startswith("sk-ant-")
+    st.markdown(f'<div style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:{"#34d399" if ia_ok else "#475569"};margin-bottom:8px;">{"IA ACTIVA" if ia_ok_sb else "Sin clave"}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown('<div style="font-family:\'Share Tech Mono\',monospace;font-size:9px;color:#5a7a99;letter-spacing:2px;margin-bottom:8px;">ACTIVOS</div>', unsafe_allow_html=True)
@@ -661,6 +661,20 @@ st.markdown(f"""
   </div>
   <span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#5a7a99;">{hora_utc}</span>
 </div>""", unsafe_allow_html=True)
+
+# API Key visible en mobile — arriba del boton escanear
+ia_ok = st.session_state.api_key.startswith("sk-ant-")
+if not ia_ok:
+    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#c8920a;margin-bottom:4px;">CLAVE API ANTHROPIC</div>', unsafe_allow_html=True)
+    api_mobile = st.text_input("API Key", value=st.session_state.api_key,
+        placeholder="sk-ant-api03-...", type="password",
+        label_visibility="collapsed", key="api_mobile")
+    if api_mobile:
+        st.session_state.api_key = api_mobile
+        ia_ok = api_mobile.startswith("sk-ant-")
+        st.rerun()
+else:
+    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#16a34a;margin-bottom:6px;">IA ACTIVA</div>', unsafe_allow_html=True)
 
 # Boton escanear
 col_btn, col_est = st.columns([1,3])
