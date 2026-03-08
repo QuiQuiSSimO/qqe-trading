@@ -269,6 +269,19 @@ def analizar_volatilidad(df):
     elif pct >= 60: return "NORMAL", pct, "Volatilidad aceptable — Con precaucion", "#fbbf24","atr-low"
     else:           return "PLANO",  pct, "Mercado sin fuerza — NO OPERAR",         "#f87171","atr-flat"
 
+
+def calcular_soportes_resistencias(df, periodos=100):
+    datos = df.tail(periodos)
+    maximos = datos["maximo"].values
+    minimos = datos["minimo"].values
+    resistencias, soportes = [], []
+    for i in range(2, len(maximos)-2):
+        if maximos[i] > maximos[i-1] and maximos[i] > maximos[i-2] and maximos[i] > maximos[i+1] and maximos[i] > maximos[i+2]:
+            resistencias.append(maximos[i])
+        if minimos[i] < minimos[i-1] and minimos[i] < minimos[i-2] and minimos[i] < minimos[i+1] and minimos[i] < minimos[i+2]:
+            soportes.append(minimos[i])
+    return sorted(set([round(s,4) for s in soportes]))[:3], sorted(set([round(r,4) for r in resistencias]))[-3:]
+
 def filtro_tendencia(df):
     """Tendencia usando EMA200 + confirmacion MACD"""
     ema200 = calc_ema(df["cierre"], 200)
@@ -989,29 +1002,111 @@ with tab_alert:
                           <div style="font-family:'Share Tech Mono',monospace;font-size:8px;color:#4a6080;margin-top:4px;">{pat.strip()[:18]}</div>
                         </div>""", unsafe_allow_html=True)
 
-                # Boton IA individual
+                # Boton IA individual con escaneo en vivo
                 if ia_ok:
                     ia_key = f"ia_individual_{i}"
                     ia_resp_key = f"ia_resp_{i}"
                     if ia_resp_key not in st.session_state:
                         st.session_state[ia_resp_key] = ""
+
+                    st.markdown("---")
                     if st.button(f"ANALIZAR ESTA SEÑAL CON IA", key=ia_key):
-                        checks_txt = "\n".join([f"{'OK' if v else 'FALLA'}: {l}" for l,v in checks])
-                        sys_p = f"Eres analista de Hector. Capital $467, objetivo $50/dia, IQ Option M15. Analiza esta señal especifica y di si debe entrar AHORA o esperar. Se directo. Max 80 palabras. Espanol."
-                        prompt = f"Activo: {al['activo']}\nDireccion: {al['dir']}\nPatrones: {al['patrones_nombres']}\nScore: {al['conf']}%\nExpiracion: {al['expiracion']}\n\nChecklist:\n{checks_txt}"
-                        with st.spinner("Analizando..."):
+                        with st.spinner(f"Escaneando {al['activo']} en vivo..."):
                             try:
+                                # Descargar datos frescos del activo
+                                info_ia = ACTIVOS.get(al["activo"], {})
+                                df_ia   = obtener_datos(info_ia.get("yahoo",""))
+
+                                # Construir contexto tecnico detallado
+                                checks_txt = "\n".join([f"{'OK' if v else 'FALLA'}: {l}" for l,v in checks])
+
+                                datos_tecnicos = ""
+                                if df_ia is not None and len(df_ia) > 50:
+                                    rsi_ia   = calc_rsi(df_ia["cierre"]).iloc[-1]
+                                    atr_ia   = calc_atr(df_ia).iloc[-1]
+                                    atr_avg  = calc_atr(df_ia).iloc[-20:].mean()
+                                    ema20_ia = calc_ema(df_ia["cierre"], 20).iloc[-1]
+                                    ema50_ia = calc_ema(df_ia["cierre"], 50).iloc[-1]
+                                    precio_ia = df_ia["cierre"].iloc[-1]
+                                    vela_ant1 = df_ia["cierre"].iloc[-2]
+                                    vela_ant2 = df_ia["cierre"].iloc[-3]
+                                    _, _, macd_hist = calc_macd(df_ia["cierre"])
+                                    macd_v   = macd_hist.iloc[-1]
+                                    tend_ia, _ = filtro_tendencia(df_ia)
+                                    vol_ia, vol_pct_ia, _, _, _ = analizar_volatilidad(df_ia)
+                                    sop_ia, res_ia = calcular_soportes_resistencias(df_ia)
+
+                                    # Ultimas 5 velas
+                                    ultimas = df_ia.tail(5)
+                                    velas_txt = ""
+                                    for _, row in ultimas.iterrows():
+                                        color_v = "VERDE" if row["cierre"] > row["apertura"] else "ROJA"
+                                        velas_txt += f"  {color_v} O:{row['apertura']:.4f} C:{row['cierre']:.4f} H:{row['maximo']:.4f} L:{row['minimo']:.4f}\n"
+
+                                    datos_tecnicos = f"""
+DATOS EN VIVO M15 — {al['activo']}:
+Precio actual: {precio_ia:.4f}
+Tendencia: {tend_ia}
+RSI: {rsi_ia:.1f} {'(SOBRECOMPRA)' if rsi_ia>70 else '(SOBREVENTA)' if rsi_ia<30 else '(NEUTRO)'}
+MACD histograma: {macd_v:.4f} {'(POSITIVO - alcista)' if macd_v>0 else '(NEGATIVO - bajista)'}
+EMA20: {ema20_ia:.4f} | EMA50: {ema50_ia:.4f}
+ATR actual: {atr_ia:.4f} | ATR promedio: {atr_avg:.4f} | Volatilidad: {vol_ia} ({vol_pct_ia:.0f}%)
+Soportes cercanos: {[f"{s:.4f}" for s in sop_ia]}
+Resistencias cercanas: {[f"{r:.4f}" for r in res_ia]}
+
+Ultimas 5 velas M15:
+{velas_txt}"""
+
+                                sys_p = """Eres el analista personal de Hector, trader profesional de IQ Option con opciones binarias M15.
+Tu trabajo es analizar la señal y los datos tecnicos en vivo y decirle con claridad si debe ENTRAR AHORA, ESPERAR o NO ENTRAR.
+Se muy directo. Maximo 100 palabras. Responde en espanol.
+Formato: empieza siempre con la decision en mayusculas (ENTRAR / ESPERAR / NO ENTRAR), luego el por que en 2-3 lineas."""
+
+                                prompt = f"""SEÑAL DETECTADA:
+Activo: {al['activo']}
+Direccion: {al['dir']} ({'CALL' if al['dir']=='ALCISTA' else 'PUT'})
+Patrones: {al['patrones_nombres']}
+Score: {al['conf']}% — {al['conf_label']}
+Expiracion recomendada: {al['expiracion']}
+Precio al detectar: ${al['precio']:.4f}
+Hora: {al['hora']} UTC
+
+CHECKLIST AUTOMATICO ({aprobados}/4 OK):
+{checks_txt}
+{datos_tecnicos}
+Capital de Hector: ${st.session_state.get('capital_dia', 467.86):.2f} | Entrada 2%: ${st.session_state.get('capital_dia', 467.86)*0.02:.2f}
+
+Dime: ¿Entra ahora o espera?"""
+
                                 r = requests.post("https://api.anthropic.com/v1/messages",
                                     headers={"Content-Type":"application/json","x-api-key":st.session_state.api_key,"anthropic-version":"2023-06-01"},
-                                    json={"model":"claude-sonnet-4-20250514","max_tokens":200,"system":sys_p,
+                                    json={"model":"claude-sonnet-4-20250514","max_tokens":250,"system":sys_p,
                                           "messages":[{"role":"user","content":prompt}]}, timeout=30)
+
                                 if r.status_code == 200:
                                     st.session_state[ia_resp_key] = r.json()["content"][0]["text"]
                                     st.rerun()
+                                else:
+                                    st.error(f"Error API: {r.status_code}")
                             except Exception as e:
                                 st.error(f"Error: {e}")
+
                     if st.session_state.get(ia_resp_key):
-                        st.markdown(f'<div style="background:#fff8e7;border:1px solid #c8920a;border-radius:8px;padding:12px;font-size:13px;color:#1a2940;line-height:1.7;margin-top:8px;">{st.session_state[ia_resp_key].replace(chr(10),"<br>")}</div>', unsafe_allow_html=True)
+                        resp_txt = st.session_state[ia_resp_key]
+                        if "NO ENTRAR" in resp_txt.upper():
+                            rc,rb,rbr = "#dc2626","#fff0f0","#991b1b"
+                            ri = "🔴"
+                        elif "ESPERAR" in resp_txt.upper():
+                            rc,rb,rbr = "#c8920a","#fff8e7","#c8920a"
+                            ri = "🟡"
+                        else:
+                            rc,rb,rbr = "#16a34a","#e8f9f0","#065f46"
+                            ri = "🟢"
+                        st.markdown(f'''<div style="background:{rb};border:2px solid {rbr};border-radius:10px;padding:14px;margin-top:8px;">
+                          <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:22px;color:{rc};margin-bottom:6px;">{ri} ANALISIS IA EN VIVO</div>
+                          <div style="font-size:13px;color:#1a2940;line-height:1.8;">{resp_txt.replace(chr(10),"<br>")}</div>
+                          <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;margin-top:8px;">Datos frescos M15 · {al["activo"]} · {datetime.now().strftime("%H:%M")}</div>
+                        </div>''', unsafe_allow_html=True)
 
             _, c2, c3 = st.columns([2,1,1])
             with c2:
