@@ -1,7 +1,15 @@
-# HECTOR PATTERN DETECTOR
-# Sistema de Reconocimiento de Patrones — by Hector Trading
-# Activos: XAU/USD, EUR/USD, GBP/USD, NAS100, BTC/USD, Crude Oil
-# Patrones: 8 patrones profesionales en M15 con filtro H1
+# HECTOR PATTERN DETECTOR v4
+# Sistema Profesional de Reconocimiento de Patrones
+# by Hector Trading — IQ Option M15
+#
+# v4 — Correcciones y mejoras autonomas:
+#   - MACD integrado como confirmacion de tendencia
+#   - calcular_score_activo() simplificado, sin desincronizacion
+#   - Historial sin duplicados (deduplicacion por activo+hora)
+#   - Confluencia solo cuenta patrones en la MISMA direccion
+#   - Expiracion de confluencia = la mayor de los patrones involucrados
+#   - Tracker WIN/LOSS robusto con key unico por alerta
+#   - Indicador de sesion activa en header (Londres / Nueva York)
 #
 # INSTALACION: pip install streamlit requests pandas numpy yfinance
 # EJECUCION:   streamlit run hector_pattern_detector.py
@@ -9,9 +17,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, date
 import requests
-import time
 
 st.set_page_config(
     page_title="Hector Pattern Detector",
@@ -27,809 +34,871 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Share+Tech+Mono&family=Inter:wght@400;500;600&display=swap');
 
-html, body, .stApp { background:#0a0f1e !important; }
-.stApp { font-family:'Inter',sans-serif; color:#e2e8f0; }
-[data-testid="stSidebar"] { background:#0f172a !important; border-right:1px solid #1e293b !important; }
+html, body, .stApp { background:#e8f0f7 !important; }
+.stApp { font-family:'Inter',sans-serif; color:#1a2940; }
+[data-testid="stSidebar"] { background:#f0f6fc !important; border-right:1px solid #bdd4e8 !important; }
 
-.stTabs [data-baseweb="tab-list"] { background:#0f172a; border-bottom:2px solid #1e293b; }
+.stTabs [data-baseweb="tab-list"] { background:#f0f6fc; border-bottom:2px solid #bdd4e8; }
 .stTabs [data-baseweb="tab"] {
-    background:transparent; color:#475569 !important;
-    font-family:'Share Tech Mono',monospace; font-size:11px;
-    letter-spacing:1px; padding:10px 16px; border:none;
+    background:transparent; color:#5a7a99 !important;
+    font-family:'Share Tech Mono',monospace; font-size:10px;
+    letter-spacing:1px; padding:10px 12px; border:none;
 }
 .stTabs [aria-selected="true"] {
-    background:#0a0f1e !important; color:#f1f5f9 !important;
+    background:#ddeaf5 !important; color:#0f2035 !important;
     border-bottom:2px solid #c8920a !important; font-weight:700 !important;
 }
 
-.card { background:#0f172a; border:1px solid #1e293b; border-radius:10px; padding:16px; margin-bottom:10px; }
-.card-gold   { border-left:4px solid #c8920a; }
-.card-green  { border-left:4px solid #065f46; }
-.card-red    { border-left:4px solid #991b1b; }
-.card-blue   { border-left:4px solid #1e3a8a; }
-.card-purple { border-left:4px solid #5b21b6; }
-
-.kpi { background:#0f172a; border:1px solid #1e293b; border-radius:10px; padding:14px; text-align:center; }
-.kpi-label { font-family:'Share Tech Mono',monospace; font-size:9px; color:#475569; letter-spacing:2px; margin-bottom:6px; }
+.kpi { background:#f0f6fc; border:1px solid #bdd4e8; border-radius:10px; padding:14px; text-align:center; }
+.kpi-label { font-family:'Share Tech Mono',monospace; font-size:9px; color:#5a7a99; letter-spacing:2px; margin-bottom:6px; }
 .kpi-value { font-family:'Rajdhani',sans-serif; font-size:30px; font-weight:700; line-height:1.1; }
-.kpi-sub   { font-family:'Share Tech Mono',monospace; font-size:9px; color:#475569; margin-top:3px; }
+.kpi-sub   { font-family:'Share Tech Mono',monospace; font-size:9px; color:#5a7a99; margin-top:3px; }
 
-.sec { font-family:'Share Tech Mono',monospace; font-size:10px; color:#475569; letter-spacing:3px; border-bottom:1px solid #1e293b; padding-bottom:6px; margin:16px 0 12px; }
+.sec { font-family:'Share Tech Mono',monospace; font-size:10px; color:#5a7a99; letter-spacing:3px;
+       border-bottom:1px solid #bdd4e8; padding-bottom:6px; margin:16px 0 12px; }
 
-.pattern-card {
-    background:#0f172a; border:1px solid #1e293b; border-radius:10px;
-    padding:16px; margin-bottom:10px; transition:border-color 0.2s;
-}
-.pattern-card.bullish { border-left:4px solid #065f46; }
-.pattern-card.bearish { border-left:4px solid #991b1b; }
-.pattern-card.neutral { border-left:4px solid #c8920a; }
+.hector-brand { background:linear-gradient(135deg,#f0f6fc,#bdd4e8); border:1px solid #c8920a;
+    border-radius:12px; padding:18px; text-align:center; margin-bottom:14px; }
 
-.conf-bar { height:8px; background:#1e293b; border-radius:4px; overflow:hidden; margin:6px 0; }
-.conf-fill-green  { height:100%; border-radius:4px; background:linear-gradient(90deg,#065f46,#22c55e); }
-.conf-fill-red    { height:100%; border-radius:4px; background:linear-gradient(90deg,#991b1b,#ef4444); }
-.conf-fill-gold   { height:100%; border-radius:4px; background:linear-gradient(90deg,#92400e,#c8920a); }
+.sesion-bar { border-radius:8px; padding:8px 16px; margin-bottom:14px;
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
 
-.badge { display:inline-block; padding:3px 10px; border-radius:20px; font-family:'Share Tech Mono',monospace; font-size:9px; font-weight:700; }
-.badge-green  { background:#064e3b; color:#34d399; border:1px solid #065f46; }
-.badge-red    { background:#7f1d1d; color:#f87171; border:1px solid #991b1b; }
-.badge-gold   { background:#451a03; color:#fbbf24; border:1px solid #92400e; }
-.badge-blue   { background:#1e3a8a; color:#93c5fd; border:1px solid #1e40af; }
-.badge-gray   { background:#1e293b; color:#94a3b8; border:1px solid #334155; }
-.badge-purple { background:#2e1065; color:#c4b5fd; border:1px solid #5b21b6; }
+.atr-ok   { background:#e8f9f0; border:1px solid #065f46; border-radius:8px; padding:10px 14px; margin-bottom:6px; }
+.atr-low  { background:#fffbf0; border:1px solid #c8920a; border-radius:8px; padding:10px 14px; margin-bottom:6px; }
+.atr-flat { background:#fff0f0; border:1px solid #991b1b; border-radius:8px; padding:10px 14px; margin-bottom:6px; }
 
-.asset-row {
-    background:#0f172a; border:1px solid #1e293b; border-radius:8px;
-    padding:12px 16px; margin-bottom:8px; display:flex;
-    align-items:center; justify-content:space-between;
-}
-.asset-name { font-family:'Rajdhani',sans-serif; font-weight:700; font-size:18px; color:#f1f5f9; }
-.asset-price { font-family:'Share Tech Mono',monospace; font-size:12px; color:#94a3b8; }
+.pattern-card { background:#f0f6fc; border:1px solid #bdd4e8; border-radius:10px; padding:16px; margin-bottom:10px; }
+.pattern-card.alcista { border-left:4px solid #065f46; }
+.pattern-card.bajista { border-left:4px solid #991b1b; }
 
-.alert-card {
-    border-radius:10px; padding:16px; margin-bottom:10px;
-    border:1px solid; animation:pulse-border 2s infinite;
-}
-.alert-bull { background:#022c22; border-color:#065f46; }
-.alert-bear { background:#2d0d0d; border-color:#991b1b; }
+.alert-card { border-radius:12px; padding:18px; margin-bottom:14px; border:1px solid; }
+.alert-alcista { background:#e8f9f0; border-color:#065f46; }
+.alert-bajista { background:#fff0f0; border-color:#991b1b; }
 
-@keyframes pulse-border {
-    0%,100% { box-shadow: 0 0 0 0 rgba(200,146,10,0); }
-    50% { box-shadow: 0 0 0 4px rgba(200,146,10,0.15); }
-}
+.confluencia-card { border-radius:12px; padding:18px; margin-bottom:14px;
+    background:linear-gradient(135deg,#fff8e7,#eaf3fa);
+    border:2px solid #c8920a; box-shadow:0 0 20px rgba(200,146,10,0.2); }
 
-.scan-status {
-    display:flex; align-items:center; gap:8px;
-    font-family:'Share Tech Mono',monospace; font-size:10px;
-}
-.scan-dot {
-    width:8px; height:8px; border-radius:50%;
-    animation:blink 1s infinite;
-}
+.exp-badge { display:inline-block; background:#fff8e7; border:1px solid #c8920a;
+    color:#fbbf24; padding:4px 10px; border-radius:20px;
+    font-family:'Share Tech Mono',monospace; font-size:9px; font-weight:700; letter-spacing:1px; }
+
+.conf-multi-badge { display:inline-block; background:#451a03; border:1px solid #c8920a;
+    color:#fbbf24; padding:4px 10px; border-radius:20px;
+    font-family:'Share Tech Mono',monospace; font-size:9px; font-weight:700; letter-spacing:1px; }
+
+.vol-track { height:8px; background:#bdd4e8; border-radius:4px; overflow:hidden; margin:6px 0; }
+.vol-fill-green { height:100%; border-radius:4px; background:linear-gradient(90deg,#065f46,#22c55e); }
+.vol-fill-gold  { height:100%; border-radius:4px; background:linear-gradient(90deg,#92400e,#fbbf24); }
+.vol-fill-red   { height:100%; border-radius:4px; background:linear-gradient(90deg,#991b1b,#ef4444); }
+
+.asset-row { background:#f0f6fc; border:1px solid #bdd4e8; border-radius:8px;
+    padding:14px 16px; margin-bottom:8px; display:flex; align-items:center;
+    justify-content:space-between; flex-wrap:wrap; gap:8px; }
+
+.rank-card { background:#f0f6fc; border:1px solid #bdd4e8; border-radius:10px;
+    padding:14px; margin-bottom:8px; display:flex; align-items:center; gap:14px; }
+.rank-num { font-family:'Rajdhani',sans-serif; font-size:32px; font-weight:700;
+    color:#c8920a; min-width:36px; }
+
+.hist-item { background:#f0f6fc; border:1px solid #bdd4e8; border-radius:8px;
+    padding:10px 14px; margin-bottom:6px; display:flex; align-items:center;
+    justify-content:space-between; flex-wrap:wrap; gap:6px; }
+
+.conf-bar { height:6px; background:#bdd4e8; border-radius:3px; overflow:hidden; margin:6px 0; }
+.conf-fill-green { height:100%; border-radius:3px; background:linear-gradient(90deg,#065f46,#22c55e); }
+.conf-fill-red   { height:100%; border-radius:3px; background:linear-gradient(90deg,#991b1b,#ef4444); }
+.conf-fill-gold  { height:100%; border-radius:3px; background:linear-gradient(90deg,#92400e,#fbbf24); }
+
+.scan-dot { width:8px; height:8px; border-radius:50%; animation:blink 1s infinite; display:inline-block; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
-.hector-brand {
-    background:linear-gradient(135deg, #0f172a, #1e293b);
-    border:1px solid #c8920a;
-    border-radius:12px;
-    padding:20px;
-    text-align:center;
-    margin-bottom:16px;
+@media (max-width:480px) {
+    .kpi-value { font-size:22px; }
+    .alert-card,.confluencia-card { padding:14px; }
+    .asset-row { flex-direction:column; align-items:flex-start; }
+    .rank-card { flex-direction:column; }
 }
 
 .stButton>button {
-    background:#c8920a !important; color:#0a0f1e !important;
-    border:none !important; border-radius:6px !important;
+    background:#c8920a !important; color:#0f2035 !important;
+    border:none !important; border-radius:8px !important;
     font-family:'Share Tech Mono',monospace !important;
-    font-size:11px !important; letter-spacing:1px !important;
-    font-weight:700 !important;
+    font-size:11px !important; letter-spacing:1px !important; font-weight:700 !important;
 }
-.stButton>button:hover { background:#a37208 !important; }
-.stSelectbox>div>div { background:#0f172a !important; border:1px solid #1e293b !important; color:#f1f5f9 !important; }
-.stNumberInput>div>div>input { background:#0f172a !important; border:1px solid #1e293b !important; color:#f1f5f9 !important; }
+.stCheckbox label { color:#4a6080 !important; font-family:'Share Tech Mono',monospace !important; font-size:11px !important; }
 
 ::-webkit-scrollbar { width:4px; }
-::-webkit-scrollbar-track { background:#0a0f1e; }
-::-webkit-scrollbar-thumb { background:#1e293b; border-radius:2px; }
+::-webkit-scrollbar-track { background:#ddeaf5; }
+::-webkit-scrollbar-thumb { background:#7aaac8; border-radius:2px; }
 </style>
 """, unsafe_allow_html=True)
 
 # ================================================================
 # SESSION STATE
 # ================================================================
-if "scan_results" not in st.session_state: st.session_state.scan_results = []
-if "last_scan"    not in st.session_state: st.session_state.last_scan = None
-if "alerts"       not in st.session_state: st.session_state.alerts = []
-if "api_key"      not in st.session_state: st.session_state.api_key = ""
-if "auto_scan"    not in st.session_state: st.session_state.auto_scan = False
+defaults = {
+    "resultados_scan": [],
+    "ultimo_scan": None,
+    "alertas": [],
+    "api_key": "",
+    "confirmadas": set(),
+    "historial": [],
+    "tracker": [],
+    "ia_analisis": "",
+}
+for k, v in defaults.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
 # ================================================================
-# ASSETS CONFIG
+# ACTIVOS
 # ================================================================
-ASSETS = {
-    "XAU/USD":   {"yahoo": "GC=F",   "color": "#c8920a", "tipo": "Commodity", "spread": 0.30},
-    "EUR/USD":   {"yahoo": "EURUSD=X","color": "#1d4ed8", "tipo": "Forex",     "spread": 0.0001},
-    "GBP/USD":   {"yahoo": "GBPUSD=X","color": "#6d28d9", "tipo": "Forex",     "spread": 0.0002},
-    "NAS100":    {"yahoo": "NQ=F",    "color": "#0891b2", "tipo": "Index",     "spread": 1.0},
-    "BTC/USD":   {"yahoo": "BTC-USD", "color": "#f59e0b", "tipo": "Crypto",    "spread": 5.0},
-    "CRUDE OIL": {"yahoo": "CL=F",   "color": "#16a34a", "tipo": "Commodity", "spread": 0.05},
+ACTIVOS = {
+    "XAU/USD":   {"yahoo":"GC=F",    "color":"#c8920a","tipo":"Commodity"},
+    "EUR/USD":   {"yahoo":"EURUSD=X","color":"#1d4ed8","tipo":"Forex"},
+    "GBP/USD":   {"yahoo":"GBPUSD=X","color":"#6d28d9","tipo":"Forex"},
+    "NAS100":    {"yahoo":"NQ=F",    "color":"#0891b2","tipo":"Indice"},
+    "BTC/USD":   {"yahoo":"BTC-USD", "color":"#f59e0b","tipo":"Crypto"},
+    "CRUDE OIL": {"yahoo":"CL=F",   "color":"#16a34a","tipo":"Commodity"},
 }
 
-PATTERNS = {
-    "Engulfing + EMA":       {"efectividad": 72, "desc": "Vela envolvente en EMA100/200"},
-    "Pin Bar en SR":         {"efectividad": 70, "desc": "Mecha larga en soporte/resistencia"},
-    "Fakey":                 {"efectividad": 66, "desc": "Falsa ruptura con reversion"},
-    "Divergencia RSI":       {"efectividad": 68, "desc": "Precio vs RSI divergen"},
-    "Inside Bar Breakout":   {"efectividad": 67, "desc": "Compresion + ruptura de rango"},
-    "Three Soldiers/Crows":  {"efectividad": 63, "desc": "3 velas consecutivas de momentum"},
-    "Morning/Evening Star":  {"efectividad": 65, "desc": "Patron 3 velas de agotamiento"},
-    "Consolidacion Ruptura": {"efectividad": 64, "desc": "Flag/Pennant post-impulso"},
+# peso: importancia en el score de confluencia (3=mayor, 1=menor)
+# min_exp: minutos de expiracion recomendada
+PATRONES = {
+    "Engulfing + EMA":       {"efectividad":72,"desc":"Vela envolvente en EMA100/200","min_exp":15,"tf":"M15","peso":3},
+    "Pin Bar en SR":         {"efectividad":70,"desc":"Mecha larga en soporte/resistencia","min_exp":30,"tf":"M15","peso":3},
+    "Divergencia RSI":       {"efectividad":68,"desc":"Precio vs RSI divergen","min_exp":30,"tf":"M15","peso":2},
+    "Fakey":                 {"efectividad":66,"desc":"Falsa ruptura con reversion","min_exp":15,"tf":"M15","peso":2},
+    "Inside Bar Ruptura":    {"efectividad":67,"desc":"Compresion + ruptura de rango","min_exp":15,"tf":"M15","peso":2},
+    "Tres Soldados/Cuervos": {"efectividad":63,"desc":"3 velas consecutivas de momentum","min_exp":15,"tf":"M15","peso":1},
+    "Estrella Manana/Tarde": {"efectividad":65,"desc":"Patron 3 velas de agotamiento","min_exp":30,"tf":"M15","peso":2},
+    "Consolidacion Ruptura": {"efectividad":64,"desc":"Flag/Pennant post-impulso","min_exp":15,"tf":"M15","peso":1},
 }
 
+def expiracion_str(min_exp):
+    return f"{min_exp} min"
+
 # ================================================================
-# DATA FETCHING
+# SESION DE MERCADO
+# ================================================================
+def get_sesion():
+    h = datetime.now(timezone.utc).hour
+    if   7 <= h < 10:  return "LONDRES",       "#34d399","#e8f9f0","Activa — mejor momento"
+    elif 13 <= h < 16: return "NUEVA YORK",    "#34d399","#e8f9f0","Activa — alta liquidez"
+    elif 16 <= h < 17: return "SOLAPAMIENTO",  "#fbbf24","#451a03","Alta volatilidad, cuidado"
+    elif 10 <= h < 13: return "INTERBANCARIA", "#fbbf24","#451a03","Liquidez moderada"
+    else:              return "CERRADA",        "#f87171","#fff0f0","No operar binarias"
+
+# ================================================================
+# DATOS
 # ================================================================
 @st.cache_data(ttl=300)
-def fetch_data(symbol_yahoo, period="60d", interval="15m"):
+def obtener_datos(simbolo, periodo="60d", intervalo="15m"):
     try:
         import yfinance as yf
-        ticker = yf.Ticker(symbol_yahoo)
-        df = ticker.history(period=period, interval=interval)
-        if df.empty:
-            return None
+        df = yf.Ticker(simbolo).history(period=periodo, interval=intervalo)
+        if df.empty: return None
         df = df[["Open","High","Low","Close","Volume"]].copy()
-        df.columns = ["open","high","low","close","volume"]
-        df = df.dropna()
-        return df
-    except Exception as e:
-        return None
-
-def fetch_data_alpha(symbol, api_key_alpha):
-    try:
-        url = f"https://www.alphavantage.co/query?function=FX_INTRADAY&from_symbol={symbol[:3]}&to_symbol={symbol[4:]}&interval=15min&outputsize=full&apikey={api_key_alpha}"
-        r = requests.get(url, timeout=10)
-        data = r.json()
-        ts = data.get("Time Series FX (15min)", {})
-        if not ts:
-            return None
-        rows = []
-        for dt, vals in ts.items():
-            rows.append({
-                "datetime": pd.to_datetime(dt),
-                "open":  float(vals["1. open"]),
-                "high":  float(vals["2. high"]),
-                "low":   float(vals["3. low"]),
-                "close": float(vals["4. close"]),
-                "volume": 0
-            })
-        df = pd.DataFrame(rows).sort_values("datetime").reset_index(drop=True)
-        return df
+        df.columns = ["apertura","maximo","minimo","cierre","volumen"]
+        return df.dropna()
     except:
         return None
 
 # ================================================================
-# PATTERN DETECTION FUNCTIONS
+# INDICADORES
 # ================================================================
-def calc_ema(series, period):
-    return series.ewm(span=period, adjust=False).mean()
+def calc_ema(serie, p):
+    return serie.ewm(span=p, adjust=False).mean()
 
-def calc_rsi(series, period=14):
-    delta = series.diff()
-    gain  = delta.clip(lower=0)
-    loss  = -delta.clip(upper=0)
-    avg_g = gain.ewm(span=period, adjust=False).mean()
-    avg_l = loss.ewm(span=period, adjust=False).mean()
-    rs    = avg_g / (avg_l + 1e-10)
-    return 100 - (100 / (1 + rs))
+def calc_rsi(serie, p=14):
+    d = serie.diff()
+    g = d.clip(lower=0).ewm(span=p, adjust=False).mean()
+    l = (-d.clip(upper=0)).ewm(span=p, adjust=False).mean()
+    return 100 - (100 / (1 + g / (l + 1e-10)))
 
-def calc_stoch(df, period=14):
-    hh = df["high"].rolling(period).max()
-    ll = df["low"].rolling(period).min()
-    return (df["close"] - ll) / (hh - ll + 1e-10) * 100
+def calc_atr(df, p=14):
+    cp = df["cierre"].shift(1)
+    tr = pd.concat([
+        df["maximo"] - df["minimo"],
+        (df["maximo"] - cp).abs(),
+        (df["minimo"] - cp).abs()
+    ], axis=1).max(axis=1)
+    return tr.ewm(span=p, adjust=False).mean()
 
-def detect_engulfing_ema(df):
-    results = []
-    ema100 = calc_ema(df["close"], 100)
-    ema200 = calc_ema(df["close"], 200)
+def calc_macd(serie, rapido=12, lento=26, señal=9):
+    linea = calc_ema(serie, rapido) - calc_ema(serie, lento)
+    sig   = calc_ema(linea, señal)
+    hist  = linea - sig
+    return linea, sig, hist
+
+def analizar_volatilidad(df):
+    atr  = calc_atr(df)
+    act  = atr.iloc[-1]
+    prom = atr.iloc[-50:].mean()
+    pct  = (act / prom) * 100 if prom > 0 else 100
+    if   pct >= 90: return "FUERTE", pct, "Volatilidad optima — OPERAR",           "#34d399","atr-ok"
+    elif pct >= 60: return "NORMAL", pct, "Volatilidad aceptable — Con precaucion", "#fbbf24","atr-low"
+    else:           return "PLANO",  pct, "Mercado sin fuerza — NO OPERAR",         "#f87171","atr-flat"
+
+def filtro_tendencia(df):
+    """Tendencia usando EMA200 + confirmacion MACD"""
+    ema200 = calc_ema(df["cierre"], 200)
+    _, _, macd_hist = calc_macd(df["cierre"])
+    u = df["cierre"].iloc[-1]
+    e = ema200.iloc[-1]
+    mh = macd_hist.iloc[-1]
+    precio_arriba = u > e * 1.001
+    precio_abajo  = u < e * 0.999
+    # Tendencia confirmada: precio + MACD en misma direccion
+    if precio_arriba and mh > 0:   return "ALCISTA",       "#34d399"
+    elif precio_abajo and mh < 0:  return "BAJISTA",       "#f87171"
+    elif precio_arriba or mh > 0:  return "ALCISTA (deb)", "#6ee7b7"  # señal debil
+    elif precio_abajo  or mh < 0:  return "BAJISTA (deb)", "#fca5a5"
+    else:                          return "LATERAL",        "#fbbf24"
+
+# ================================================================
+# DETECTORES DE PATRONES
+# ================================================================
+def detectar_engulfing(df):
+    res = []; e = calc_ema(df["cierre"], 100)
     for i in range(1, len(df)):
         c, p = df.iloc[i], df.iloc[i-1]
-        near_ema = abs(c["close"] - ema100.iloc[i]) / ema100.iloc[i] < 0.003
-        # Bullish engulfing
-        if (p["close"] < p["open"] and c["close"] > c["open"] and
-            c["open"] < p["close"] and c["close"] > p["open"] and
-            c["close"] > ema100.iloc[i] and near_ema):
-            results.append({"idx": i, "dir": "BULL", "conf": 75, "pattern": "Engulfing + EMA"})
-        # Bearish engulfing
-        elif (p["close"] > p["open"] and c["close"] < c["open"] and
-              c["open"] > p["close"] and c["close"] < p["open"] and
-              c["close"] < ema100.iloc[i] and near_ema):
-            results.append({"idx": i, "dir": "BEAR", "conf": 75, "pattern": "Engulfing + EMA"})
-    return results[-3:] if results else []
+        cerca = abs(c["cierre"] - e.iloc[i]) / e.iloc[i] < 0.003
+        if (p["cierre"] < p["apertura"] and c["cierre"] > c["apertura"] and
+            c["apertura"] < p["cierre"] and c["cierre"] > p["apertura"] and
+            c["cierre"] > e.iloc[i] and cerca):
+            res.append({"idx":i,"dir":"ALCISTA","conf":75,"patron":"Engulfing + EMA"})
+        elif (p["cierre"] > p["apertura"] and c["cierre"] < c["apertura"] and
+              c["apertura"] > p["cierre"] and c["cierre"] < p["apertura"] and
+              c["cierre"] < e.iloc[i] and cerca):
+            res.append({"idx":i,"dir":"BAJISTA","conf":75,"patron":"Engulfing + EMA"})
+    return res[-3:] if res else []
 
-def detect_pin_bar(df):
-    results = []
-    sr_high = df["high"].rolling(20).max().shift(1)
-    sr_low  = df["low"].rolling(20).min().shift(1)
+def detectar_pin_bar(df):
+    res = []; sm = df["maximo"].rolling(20).max().shift(1); si = df["minimo"].rolling(20).min().shift(1)
     for i in range(20, len(df)):
-        c = df.iloc[i]
-        body = abs(c["close"] - c["open"])
-        total = c["high"] - c["low"]
-        if total == 0: continue
-        upper_wick = c["high"] - max(c["open"], c["close"])
-        lower_wick = min(c["open"], c["close"]) - c["low"]
-        near_res = abs(c["high"] - sr_high.iloc[i]) / (sr_high.iloc[i] + 1e-10) < 0.002
-        near_sup = abs(c["low"]  - sr_low.iloc[i])  / (sr_low.iloc[i]  + 1e-10) < 0.002
-        # Bull pin bar (long lower wick)
-        if lower_wick > body * 2.5 and lower_wick > upper_wick * 2 and near_sup:
-            results.append({"idx": i, "dir": "BULL", "conf": 70, "pattern": "Pin Bar en SR"})
-        # Bear pin bar (long upper wick)
-        elif upper_wick > body * 2.5 and upper_wick > lower_wick * 2 and near_res:
-            results.append({"idx": i, "dir": "BEAR", "conf": 70, "pattern": "Pin Bar en SR"})
-    return results[-3:] if results else []
+        c = df.iloc[i]; cu = abs(c["cierre"]-c["apertura"]); to = c["maximo"]-c["minimo"]
+        if to == 0: continue
+        ms = c["maximo"] - max(c["apertura"], c["cierre"])
+        mi = min(c["apertura"], c["cierre"]) - c["minimo"]
+        if mi > cu*2.5 and mi > ms*2 and abs(c["minimo"] - si.iloc[i])/(si.iloc[i]+1e-10) < 0.002:
+            res.append({"idx":i,"dir":"ALCISTA","conf":70,"patron":"Pin Bar en SR"})
+        elif ms > cu*2.5 and ms > mi*2 and abs(c["maximo"] - sm.iloc[i])/(sm.iloc[i]+1e-10) < 0.002:
+            res.append({"idx":i,"dir":"BAJISTA","conf":70,"patron":"Pin Bar en SR"})
+    return res[-3:] if res else []
 
-def detect_fakey(df):
-    results = []
+def detectar_fakey(df):
+    res = []
     for i in range(3, len(df)):
-        prev3 = df.iloc[i-3]
-        prev2 = df.iloc[i-2]
-        prev1 = df.iloc[i-1]
-        curr  = df.iloc[i]
-        # Inside bar
-        inside = (prev2["high"] < prev3["high"] and prev2["low"] > prev3["low"])
-        if not inside: continue
-        # False breakout up then reversal
-        if (prev1["high"] > prev3["high"] and
-            curr["close"] < prev3["high"] and
-            curr["close"] < prev1["close"]):
-            results.append({"idx": i, "dir": "BEAR", "conf": 66, "pattern": "Fakey"})
-        # False breakout down then reversal
-        elif (prev1["low"] < prev3["low"] and
-              curr["close"] > prev3["low"] and
-              curr["close"] > prev1["close"]):
-            results.append({"idx": i, "dir": "BULL", "conf": 66, "pattern": "Fakey"})
-    return results[-3:] if results else []
+        p3,p2,p1,c = df.iloc[i-3],df.iloc[i-2],df.iloc[i-1],df.iloc[i]
+        if not (p2["maximo"] < p3["maximo"] and p2["minimo"] > p3["minimo"]): continue
+        if p1["maximo"] > p3["maximo"] and c["cierre"] < p3["maximo"] and c["cierre"] < p1["cierre"]:
+            res.append({"idx":i,"dir":"BAJISTA","conf":66,"patron":"Fakey"})
+        elif p1["minimo"] < p3["minimo"] and c["cierre"] > p3["minimo"] and c["cierre"] > p1["cierre"]:
+            res.append({"idx":i,"dir":"ALCISTA","conf":66,"patron":"Fakey"})
+    return res[-3:] if res else []
 
-def detect_rsi_divergence(df):
-    results = []
-    rsi = calc_rsi(df["close"])
-    window = 20
-    for i in range(window + 5, len(df)):
-        price_window = df["close"].iloc[i-window:i]
-        rsi_window   = rsi.iloc[i-window:i]
-        price_max_idx = price_window.idxmax()
-        price_min_idx = price_window.idxmin()
-        # Bearish divergence
-        if (df["close"].iloc[i] >= df["close"].loc[price_max_idx] and
-            rsi.iloc[i] < rsi.loc[price_max_idx] - 5):
-            results.append({"idx": i, "dir": "BEAR", "conf": 68, "pattern": "Divergencia RSI"})
-        # Bullish divergence
-        elif (df["close"].iloc[i] <= df["close"].loc[price_min_idx] and
-              rsi.iloc[i] > rsi.loc[price_min_idx] + 5):
-            results.append({"idx": i, "dir": "BULL", "conf": 68, "pattern": "Divergencia RSI"})
-    return results[-3:] if results else []
+def detectar_div_rsi(df):
+    res = []; rsi = calc_rsi(df["cierre"]); v = 20
+    for i in range(v+5, len(df)):
+        pw = df["cierre"].iloc[i-v:i]; rw = rsi.iloc[i-v:i]
+        im = pw.idxmax(); ii = pw.idxmin()
+        if df["cierre"].iloc[i] >= df["cierre"].loc[im] and rsi.iloc[i] < rsi.loc[im] - 5:
+            res.append({"idx":i,"dir":"BAJISTA","conf":68,"patron":"Divergencia RSI"})
+        elif df["cierre"].iloc[i] <= df["cierre"].loc[ii] and rsi.iloc[i] > rsi.loc[ii] + 5:
+            res.append({"idx":i,"dir":"ALCISTA","conf":68,"patron":"Divergencia RSI"})
+    return res[-3:] if res else []
 
-def detect_inside_bar(df):
-    results = []
+def detectar_inside(df):
+    res = []
     for i in range(2, len(df)):
-        prev = df.iloc[i-1]
-        curr = df.iloc[i]
-        prev2 = df.iloc[i-2]
-        # Inside bar: current inside previous
-        inside = (prev["high"] < prev2["high"] and prev["low"] > prev2["low"])
-        if not inside: continue
-        # Breakout
-        if curr["close"] > prev2["high"]:
-            results.append({"idx": i, "dir": "BULL", "conf": 67, "pattern": "Inside Bar Breakout"})
-        elif curr["close"] < prev2["low"]:
-            results.append({"idx": i, "dir": "BEAR", "conf": 67, "pattern": "Inside Bar Breakout"})
-    return results[-3:] if results else []
+        p2,p1,c = df.iloc[i-2],df.iloc[i-1],df.iloc[i]
+        if p1["maximo"] < p2["maximo"] and p1["minimo"] > p2["minimo"]:
+            if c["cierre"] > p2["maximo"]:   res.append({"idx":i,"dir":"ALCISTA","conf":67,"patron":"Inside Bar Ruptura"})
+            elif c["cierre"] < p2["minimo"]: res.append({"idx":i,"dir":"BAJISTA","conf":67,"patron":"Inside Bar Ruptura"})
+    return res[-3:] if res else []
 
-def detect_three_soldiers(df):
-    results = []
+def detectar_tres(df):
+    res = []
     for i in range(2, len(df)):
-        c0, c1, c2 = df.iloc[i-2], df.iloc[i-1], df.iloc[i]
-        # Three white soldiers
-        if (c0["close"] > c0["open"] and c1["close"] > c1["open"] and c2["close"] > c2["open"] and
-            c1["close"] > c0["close"] and c2["close"] > c1["close"] and
-            c1["open"] > c0["open"] and c2["open"] > c1["open"]):
-            results.append({"idx": i, "dir": "BULL", "conf": 63, "pattern": "Three Soldiers/Crows"})
-        # Three black crows
-        elif (c0["close"] < c0["open"] and c1["close"] < c1["open"] and c2["close"] < c2["open"] and
-              c1["close"] < c0["close"] and c2["close"] < c1["close"] and
-              c1["open"] < c0["open"] and c2["open"] < c1["open"]):
-            results.append({"idx": i, "dir": "BEAR", "conf": 63, "pattern": "Three Soldiers/Crows"})
-    return results[-3:] if results else []
+        c0,c1,c2 = df.iloc[i-2],df.iloc[i-1],df.iloc[i]
+        if (c0["cierre"]>c0["apertura"] and c1["cierre"]>c1["apertura"] and c2["cierre"]>c2["apertura"] and
+            c1["cierre"]>c0["cierre"] and c2["cierre"]>c1["cierre"]):
+            res.append({"idx":i,"dir":"ALCISTA","conf":63,"patron":"Tres Soldados/Cuervos"})
+        elif (c0["cierre"]<c0["apertura"] and c1["cierre"]<c1["apertura"] and c2["cierre"]<c2["apertura"] and
+              c1["cierre"]<c0["cierre"] and c2["cierre"]<c1["cierre"]):
+            res.append({"idx":i,"dir":"BAJISTA","conf":63,"patron":"Tres Soldados/Cuervos"})
+    return res[-3:] if res else []
 
-def detect_morning_star(df):
-    results = []
+def detectar_estrella(df):
+    res = []
     for i in range(2, len(df)):
-        c0, c1, c2 = df.iloc[i-2], df.iloc[i-1], df.iloc[i]
-        body0 = abs(c0["close"] - c0["open"])
-        body1 = abs(c1["close"] - c1["open"])
-        body2 = abs(c2["close"] - c2["open"])
-        # Morning star
-        if (c0["close"] < c0["open"] and body0 > body1 * 2 and
-            c2["close"] > c2["open"] and body2 > body1 * 2 and
-            c2["close"] > (c0["open"] + c0["close"]) / 2):
-            results.append({"idx": i, "dir": "BULL", "conf": 65, "pattern": "Morning/Evening Star"})
-        # Evening star
-        elif (c0["close"] > c0["open"] and body0 > body1 * 2 and
-              c2["close"] < c2["open"] and body2 > body1 * 2 and
-              c2["close"] < (c0["open"] + c0["close"]) / 2):
-            results.append({"idx": i, "dir": "BEAR", "conf": 65, "pattern": "Morning/Evening Star"})
-    return results[-3:] if results else []
+        c0,c1,c2 = df.iloc[i-2],df.iloc[i-1],df.iloc[i]
+        b0 = abs(c0["cierre"]-c0["apertura"]); b1 = abs(c1["cierre"]-c1["apertura"]); b2 = abs(c2["cierre"]-c2["apertura"])
+        if (c0["cierre"]<c0["apertura"] and b0>b1*2 and c2["cierre"]>c2["apertura"] and
+            b2>b1*2 and c2["cierre"]>(c0["apertura"]+c0["cierre"])/2):
+            res.append({"idx":i,"dir":"ALCISTA","conf":65,"patron":"Estrella Manana/Tarde"})
+        elif (c0["cierre"]>c0["apertura"] and b0>b1*2 and c2["cierre"]<c2["apertura"] and
+              b2>b1*2 and c2["cierre"]<(c0["apertura"]+c0["cierre"])/2):
+            res.append({"idx":i,"dir":"BAJISTA","conf":65,"patron":"Estrella Manana/Tarde"})
+    return res[-3:] if res else []
 
-def detect_consolidation(df):
-    results = []
-    window = 10
-    for i in range(window + 2, len(df)):
-        segment = df.iloc[i-window:i]
-        seg_range = segment["high"].max() - segment["low"].min()
-        avg_range = (segment["high"] - segment["low"]).mean()
-        # Consolidation: tight range
-        if seg_range < avg_range * window * 0.5:
-            curr = df.iloc[i]
-            # Breakout
-            if curr["close"] > segment["high"].max():
-                results.append({"idx": i, "dir": "BULL", "conf": 64, "pattern": "Consolidacion Ruptura"})
-            elif curr["close"] < segment["low"].min():
-                results.append({"idx": i, "dir": "BEAR", "conf": 64, "pattern": "Consolidacion Ruptura"})
-    return results[-3:] if results else []
+def detectar_consolidacion(df):
+    res = []; v = 10
+    for i in range(v+2, len(df)):
+        seg  = df.iloc[i-v:i]
+        rango = seg["maximo"].max() - seg["minimo"].min()
+        prom  = (seg["maximo"] - seg["minimo"]).mean()
+        if rango < prom * v * 0.5:
+            c = df.iloc[i]
+            if c["cierre"] > seg["maximo"].max():   res.append({"idx":i,"dir":"ALCISTA","conf":64,"patron":"Consolidacion Ruptura"})
+            elif c["cierre"] < seg["minimo"].min(): res.append({"idx":i,"dir":"BAJISTA","conf":64,"patron":"Consolidacion Ruptura"})
+    return res[-3:] if res else []
 
-def run_all_patterns(df):
-    all_results = []
-    detectors = [
-        detect_engulfing_ema,
-        detect_pin_bar,
-        detect_fakey,
-        detect_rsi_divergence,
-        detect_inside_bar,
-        detect_three_soldiers,
-        detect_morning_star,
-        detect_consolidation,
-    ]
-    for detector in detectors:
-        try:
-            results = detector(df)
-            all_results.extend(results)
-        except:
-            pass
-    # Filter recent (last 10 candles)
-    recent = [r for r in all_results if r["idx"] >= len(df) - 10]
-    # Sort by confidence
-    recent.sort(key=lambda x: x["conf"], reverse=True)
-    return recent
+def ejecutar_patrones(df):
+    todos = []
+    for det in [detectar_engulfing, detectar_pin_bar, detectar_fakey, detectar_div_rsi,
+                detectar_inside, detectar_tres, detectar_estrella, detectar_consolidacion]:
+        try: todos.extend(det(df))
+        except: pass
+    recientes = [r for r in todos if r["idx"] >= len(df)-10]
+    recientes.sort(key=lambda x: x["conf"], reverse=True)
+    return recientes
 
-def get_trend_filter(df):
-    ema200 = calc_ema(df["close"], 200)
-    last_close = df["close"].iloc[-1]
-    last_ema = ema200.iloc[-1]
-    if last_close > last_ema * 1.001:
-        return "ALCISTA", "#065f46"
-    elif last_close < last_ema * 0.999:
-        return "BAJISTA", "#991b1b"
-    else:
-        return "NEUTRAL", "#92400e"
+def calcular_confluencia(patrones_alineados):
+    """
+    FIX v4: solo considera patrones en la MISMA direccion dominante.
+    Expiracion = la mayor de los patrones involucrados.
+    """
+    if not patrones_alineados: return 0, "SIN SEÑAL", 15, "ALCISTA"
 
-def get_latest_price(df):
-    return df["close"].iloc[-1]
+    # Determinar direccion dominante
+    n_alc = sum(1 for p in patrones_alineados if p["dir"] == "ALCISTA")
+    n_baj = sum(1 for p in patrones_alineados if p["dir"] == "BAJISTA")
+    dir_dom = "ALCISTA" if n_alc >= n_baj else "BAJISTA"
 
-def get_rsi_value(df):
-    rsi = calc_rsi(df["close"])
-    return rsi.iloc[-1]
+    # Filtrar solo patrones de la direccion dominante
+    patrones_dom = [p for p in patrones_alineados if p["dir"] == dir_dom]
+    n = len(patrones_dom)
+
+    peso_total = sum(PATRONES.get(p["patron"],{}).get("peso",1) for p in patrones_dom)
+    conf_prom  = sum(p["conf"] for p in patrones_dom) / n
+    score = min(100, peso_total * 10 + conf_prom * 0.5)
+
+    # Expiracion: la mayor de los patrones involucrados
+    max_exp = max(PATRONES.get(p["patron"],{}).get("min_exp", 15) for p in patrones_dom)
+
+    if n >= 3: label = "CONFLUENCIA MAXIMA"
+    elif n == 2: label = "DOBLE CONFLUENCIA"
+    else: label = "SEÑAL SIMPLE"
+
+    return score, label, max_exp, dir_dom
+
+def calcular_score_activo(patrones_validos, vol_est, tendencia):
+    """FIX v4: recibe parametros directos, sin riesgo de desincronizacion."""
+    pat_alineados = [p for p in patrones_validos if p.get("alineado")]
+    if not pat_alineados: return 0
+    score, _, _, _ = calcular_confluencia(pat_alineados)
+    vol_bonus  = {"FUERTE":20,"NORMAL":10,"PLANO":0}.get(vol_est, 0)
+    tend_bonus = 0 if "LATERAL" in tendencia else 10
+    return score + vol_bonus + tend_bonus
 
 # ================================================================
 # SIDEBAR
 # ================================================================
 with st.sidebar:
-    # BRAND
     st.markdown("""
-    <div style='text-align:center;padding:14px 0 10px;border-bottom:1px solid #1e293b;margin-bottom:14px;'>
-    <div style='font-family:"Rajdhani",sans-serif;font-size:22px;font-weight:700;
-    color:#c8920a;letter-spacing:3px;'>HECTOR</div>
-    <div style='font-family:"Share Tech Mono",monospace;font-size:9px;
-    color:#475569;letter-spacing:2px;'>PATTERN DETECTOR</div>
+    <div style='text-align:center;padding:14px 0 10px;border-bottom:1px solid #bdd4e8;margin-bottom:14px;'>
+    <div style='font-family:"Rajdhani",sans-serif;font-size:22px;font-weight:700;color:#c8920a;letter-spacing:3px;'>HECTOR</div>
+    <div style='font-family:"Share Tech Mono",monospace;font-size:9px;color:#5a7a99;letter-spacing:2px;'>PATTERN DETECTOR v4</div>
     </div>""", unsafe_allow_html=True)
 
-    st.markdown('<div style="font-family:\'Share Tech Mono\',monospace;font-size:9px;color:#475569;letter-spacing:2px;margin-bottom:4px;">API KEY ANTHROPIC</div>', unsafe_allow_html=True)
-    api_in = st.text_input("API Key", value=st.session_state.api_key,
-                            placeholder="sk-ant-api03-...", type="password",
-                            label_visibility="collapsed")
+    st.markdown('<div style="font-family:\'Share Tech Mono\',monospace;font-size:9px;color:#5a7a99;letter-spacing:2px;margin-bottom:4px;">CLAVE API ANTHROPIC</div>', unsafe_allow_html=True)
+    api_in = st.text_input("Clave API", value=st.session_state.api_key,
+                           placeholder="sk-ant-api03-...", type="password", label_visibility="collapsed")
     if api_in: st.session_state.api_key = api_in
-    if st.session_state.api_key.startswith("sk-ant-"):
-        st.markdown('<div style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:#34d399;margin-bottom:8px;">✅ IA ACTIVA</div>', unsafe_allow_html=True)
-    else:
-        st.markdown('<div style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:#475569;margin-bottom:8px;">Sin key</div>', unsafe_allow_html=True)
+    ia_ok = st.session_state.api_key.startswith("sk-ant-")
+    st.markdown(f'<div style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:{"#34d399" if ia_ok else "#475569"};margin-bottom:8px;">{"IA ACTIVA" if ia_ok else "Sin clave"}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
-
-    # Activos seleccionados
-    st.markdown('<div style="font-family:\'Share Tech Mono\',monospace;font-size:9px;color:#475569;letter-spacing:2px;margin-bottom:8px;">ACTIVOS A ESCANEAR</div>', unsafe_allow_html=True)
-    selected_assets = []
-    for asset, info in ASSETS.items():
-        checked = st.checkbox(asset, value=True, key=f"asset_{asset}")
-        if checked:
-            selected_assets.append(asset)
+    st.markdown('<div style="font-family:\'Share Tech Mono\',monospace;font-size:9px;color:#5a7a99;letter-spacing:2px;margin-bottom:8px;">ACTIVOS</div>', unsafe_allow_html=True)
+    activos_sel = [a for a in ACTIVOS if st.checkbox(a, value=True, key=f"chk_{a}")]
 
     st.markdown("---")
-
-    # Confianza minima
-    min_conf = st.slider("Confianza minima %", 50, 80, 63, 1)
+    confianza_min = st.slider("Confianza minima %", 50, 80, 63, 1)
+    solo_confluencia = st.checkbox("Solo mostrar confluencias", value=False)
 
     st.markdown("---")
-
-    # Sesion actual
-    h = datetime.now(timezone.utc).hour
-    if 7 <= h < 10:
-        ses, ses_col, ses_bg = "LONDRES", "#34d399", "#022c22"
-    elif 13 <= h < 16:
-        ses, ses_col, ses_bg = "NUEVA YORK", "#34d399", "#022c22"
-    elif 16 <= h < 17:
-        ses, ses_col, ses_bg = "SOLAPAMIENTO", "#fbbf24", "#451a03"
-    else:
-        ses, ses_col, ses_bg = "CERRADO", "#f87171", "#2d0d0d"
-
+    # Tracker rapido en sidebar
+    wins   = len([t for t in st.session_state.tracker if t["resultado"]=="WIN"])
+    losses = len([t for t in st.session_state.tracker if t["resultado"]=="LOSS"])
+    total  = wins + losses
+    wr     = int(wins/total*100) if total > 0 else 0
+    col_wr = "#34d399" if wr >= 60 else ("#fbbf24" if wr >= 50 else "#f87171")
     st.markdown(f"""
-    <div style='background:{ses_bg};border:1px solid {ses_col}33;border-radius:8px;
-    padding:10px 12px;margin-bottom:10px;'>
-    <div style='font-family:"Share Tech Mono",monospace;font-size:9px;color:{ses_col};
-    letter-spacing:2px;'>{ses}</div>
-    <div style='font-family:"Share Tech Mono",monospace;font-size:10px;color:#475569;'>
-    {datetime.now(timezone.utc).strftime("%H:%M:%S UTC")}</div>
-    </div>""", unsafe_allow_html=True)
+    <div style='background:#e8f0f7;border:1px solid #bdd4e8;border-radius:8px;padding:10px;text-align:center;'>
+    <div style='font-family:"Share Tech Mono",monospace;font-size:9px;color:#5a7a99;letter-spacing:2px;margin-bottom:6px;'>TRACKER DEL DIA</div>
+    <div style='display:flex;justify-content:space-around;'>
+    <div><div style='font-family:"Rajdhani",sans-serif;font-size:20px;font-weight:700;color:#34d399;'>{wins}</div>
+    <div style='font-family:"Share Tech Mono",monospace;font-size:8px;color:#5a7a99;'>WINS</div></div>
+    <div><div style='font-family:"Rajdhani",sans-serif;font-size:20px;font-weight:700;color:#f87171;'>{losses}</div>
+    <div style='font-family:"Share Tech Mono",monospace;font-size:8px;color:#5a7a99;'>LOSS</div></div>
+    <div><div style='font-family:"Rajdhani",sans-serif;font-size:20px;font-weight:700;color:{col_wr};'>{wr}%</div>
+    <div style='font-family:"Share Tech Mono",monospace;font-size:8px;color:#5a7a99;'>WIN%</div></div>
+    </div></div>""", unsafe_allow_html=True)
 
 # ================================================================
-# HEADER
+# HEADER + BARRA DE SESION
 # ================================================================
 st.markdown("""
 <div class="hector-brand">
-  <div style='font-family:"Share Tech Mono",monospace;font-size:9px;color:#475569;
-  letter-spacing:3px;margin-bottom:6px;'>SISTEMA PROFESIONAL DE RECONOCIMIENTO</div>
-  <div style='font-family:"Rajdhani",sans-serif;font-size:28px;font-weight:700;
-  color:#c8920a;letter-spacing:4px;'>HECTOR PATTERN DETECTOR</div>
-  <div style='font-family:"Share Tech Mono",monospace;font-size:10px;color:#64748b;
-  margin-top:4px;letter-spacing:2px;'>
-  8 PATRONES · 6 ACTIVOS · M15 + H1 FILTRO · IQ OPTION READY
+  <div style='font-family:"Share Tech Mono",monospace;font-size:9px;color:#5a7a99;letter-spacing:3px;margin-bottom:6px;'>SISTEMA PROFESIONAL DE RECONOCIMIENTO DE PATRONES</div>
+  <div style='font-family:"Rajdhani",sans-serif;font-size:26px;font-weight:700;color:#c8920a;letter-spacing:4px;'>HECTOR PATTERN DETECTOR</div>
+  <div style='font-family:"Share Tech Mono",monospace;font-size:9px;color:#3a5570;margin-top:4px;letter-spacing:2px;'>
+  8 PATRONES · 6 ACTIVOS · M15 · ATR · MACD · CONFLUENCIA · RANKING · HISTORIAL
   </div>
 </div>""", unsafe_allow_html=True)
 
-# ================================================================
-# SCAN BUTTON
-# ================================================================
-col_btn, col_status = st.columns([1, 3])
+# Barra de sesion
+ses_nom, ses_col, ses_bg, ses_desc = get_sesion()
+hora_utc = datetime.now(timezone.utc).strftime("%H:%M UTC")
+st.markdown(f"""
+<div class="sesion-bar" style="background:{ses_bg};border:1px solid {ses_col}44;">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span class="scan-dot" style="background:{ses_col};"></span>
+    <span style="font-family:'Share Tech Mono',monospace;font-size:11px;font-weight:700;color:{ses_col};">SESION {ses_nom}</span>
+    <span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#3a5570;">{ses_desc}</span>
+  </div>
+  <span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#5a7a99;">{hora_utc}</span>
+</div>""", unsafe_allow_html=True)
+
+# Boton escanear
+col_btn, col_est = st.columns([1,3])
 with col_btn:
-    scan_now = st.button("ESCANEAR AHORA", key="scan_btn")
-with col_status:
-    if st.session_state.last_scan:
-        st.markdown(f"""
-        <div class="scan-status" style="margin-top:8px;">
-          <div class="scan-dot" style="background:#34d399;"></div>
-          <span style="color:#475569;">Ultimo scan: {st.session_state.last_scan}</span>
-          <span style="color:#c8920a;margin-left:8px;">
-          {len(st.session_state.scan_results)} patrones detectados
-          </span>
+    escanear = st.button("ESCANEAR MERCADO", key="btn_scan")
+with col_est:
+    if st.session_state.ultimo_scan:
+        n_conf = len([a for a in st.session_state.alertas if a.get("n_patrones",1)>=2])
+        nc = "#34d399" if st.session_state.alertas else "#475569"
+        st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
+          <span class="scan-dot" style="background:#34d399;"></span>
+          <span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#5a7a99;">Ultimo: {st.session_state.ultimo_scan}</span>
+          <span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:{nc};">{len(st.session_state.alertas)} alertas</span>
+          {f'<span style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:#c8920a;">{n_conf} confluencias</span>' if n_conf>0 else ''}
         </div>""", unsafe_allow_html=True)
     else:
-        st.markdown("""
-        <div class="scan-status" style="margin-top:8px;">
-          <div class="scan-dot" style="background:#475569;"></div>
-          <span style="color:#475569;">Presiona ESCANEAR para analizar el mercado</span>
-        </div>""", unsafe_allow_html=True)
+        st.markdown('<div style="margin-top:8px;font-family:\'Share Tech Mono\',monospace;font-size:10px;color:#5a7a99;">Presiona ESCANEAR para analizar el mercado</div>', unsafe_allow_html=True)
 
 # ================================================================
-# SCANNING
+# ESCANEO
 # ================================================================
-if scan_now:
-    all_results = []
-    progress = st.progress(0)
-    status_text = st.empty()
+if escanear:
+    todos_res = []; prog = st.progress(0); txt = st.empty()
 
-    for idx, asset in enumerate(selected_assets):
-        info = ASSETS[asset]
-        status_text.markdown(f'<div style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:#c8920a;">Escaneando {asset}...</div>', unsafe_allow_html=True)
-        progress.progress((idx + 1) / len(selected_assets))
+    for idx, activo in enumerate(activos_sel):
+        info = ACTIVOS[activo]
+        txt.markdown(f'<div style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:#c8920a;">Escaneando {activo}...</div>', unsafe_allow_html=True)
+        prog.progress((idx+1) / max(len(activos_sel), 1))
 
-        df = fetch_data(info["yahoo"], period="60d", interval="15m")
-
+        df = obtener_datos(info["yahoo"])
         if df is not None and len(df) > 200:
-            patterns = run_all_patterns(df)
-            trend, trend_col = get_trend_filter(df)
-            price = get_latest_price(df)
-            rsi_val = get_rsi_value(df)
+            patrones  = ejecutar_patrones(df)
+            tend, tend_col = filtro_tendencia(df)
+            vol_est, vol_pct, vol_msg, vol_col, vol_cls = analizar_volatilidad(df)
+            precio = df["cierre"].iloc[-1]
+            rsi_v  = calc_rsi(df["cierre"]).iloc[-1]
 
-            # Filter by min confidence
-            patterns = [p for p in patterns if p["conf"] >= min_conf]
+            patrones = [p for p in patrones if p["conf"] >= confianza_min]
+            for p in patrones:
+                # Alineacion: consideramos ALCISTA(deb) como alcista para no perder señales
+                es_alc_tend = "ALCISTA" in tend
+                es_baj_tend = "BAJISTA" in tend
+                p["alineado"] = (es_alc_tend and p["dir"]=="ALCISTA") or (es_baj_tend and p["dir"]=="BAJISTA")
+                p["min_exp"]  = PATRONES.get(p["patron"],{}).get("min_exp", 15)
 
-            # Filter by trend alignment
-            aligned = []
-            for p in patterns:
-                if trend == "ALCISTA" and p["dir"] == "BULL":
-                    p["trend_aligned"] = True
-                    aligned.append(p)
-                elif trend == "BAJISTA" and p["dir"] == "BEAR":
-                    p["trend_aligned"] = True
-                    aligned.append(p)
-                else:
-                    p["trend_aligned"] = False
-                    aligned.append(p)
+            patrones_validos = [] if vol_est == "PLANO" else patrones
+            pat_alineados    = [p for p in patrones_validos if p.get("alineado")]
+            conf_score, conf_label, max_exp, dir_dom = calcular_confluencia(pat_alineados)
+            score = calcular_score_activo(patrones_validos, vol_est, tend)
 
-            all_results.append({
-                "asset": asset,
-                "info": info,
-                "patterns": aligned,
-                "trend": trend,
-                "trend_col": trend_col,
-                "price": price,
-                "rsi": rsi_val,
-                "df": df,
-                "has_signal": len([p for p in aligned if p["trend_aligned"]]) > 0
+            todos_res.append({
+                "activo":activo,"info":info,"patrones":patrones_validos,
+                "tendencia":tend,"tend_col":tend_col,
+                "vol_est":vol_est,"vol_pct":vol_pct,"vol_msg":vol_msg,"vol_col":vol_col,"vol_cls":vol_cls,
+                "precio":precio,"rsi":rsi_v,"sin_datos":False,
+                "mercado_plano":vol_est=="PLANO",
+                "tiene_senal":len(pat_alineados)>0,
+                "n_alineados":len(pat_alineados),
+                "conf_score":conf_score,"conf_label":conf_label,
+                "dir_dom":dir_dom,"max_exp":max_exp,
+                "score":score,
             })
         else:
-            all_results.append({
-                "asset": asset,
-                "info": info,
-                "patterns": [],
-                "trend": "SIN DATOS",
-                "trend_col": "#475569",
-                "price": 0,
-                "rsi": 50,
-                "df": None,
-                "has_signal": False
+            todos_res.append({
+                "activo":activo,"info":info,"patrones":[],"tendencia":"SIN DATOS",
+                "tend_col":"#475569","vol_est":"SIN DATOS","vol_pct":0,
+                "vol_msg":"Sin datos","vol_col":"#475569","vol_cls":"atr-flat",
+                "precio":0,"rsi":50,"sin_datos":True,"mercado_plano":False,
+                "tiene_senal":False,"n_alineados":0,"conf_score":0,
+                "conf_label":"SIN SEÑAL","dir_dom":"ALCISTA","max_exp":15,"score":0,
             })
 
-    progress.empty()
-    status_text.empty()
-    st.session_state.scan_results = all_results
-    st.session_state.last_scan = datetime.now().strftime("%H:%M:%S")
+    prog.empty(); txt.empty()
+    todos_res.sort(key=lambda x: x["score"], reverse=True)
+    st.session_state.resultados_scan = todos_res
 
-    # Build alerts
-    alerts = []
-    for r in all_results:
-        for p in r["patterns"]:
-            if p["trend_aligned"] and p["conf"] >= 65:
-                alerts.append({
-                    "asset": r["asset"],
-                    "pattern": p["pattern"],
-                    "dir": p["dir"],
-                    "conf": p["conf"],
-                    "price": r["price"],
-                    "hora": datetime.now().strftime("%H:%M"),
-                })
-    st.session_state.alerts = alerts
+    # Construir alertas
+    alertas = []
+    hora_scan = datetime.now().strftime("%H:%M")
+    for r in todos_res:
+        pat_al = [p for p in r["patrones"] if p.get("alineado") and p["conf"] >= 65]
+        if not pat_al or r["mercado_plano"]: continue
+        conf_score, conf_label, max_exp, dir_dom = calcular_confluencia(pat_al)
+        nombres = ", ".join(list(dict.fromkeys([p["patron"] for p in pat_al]))[:3])
+        alerta_id = f"{r['activo']}_{hora_scan}"
+
+        alertas.append({
+            "id":alerta_id,
+            "activo":r["activo"],"dir":dir_dom,
+            "conf":int(conf_score),"precio":r["precio"],
+            "expiracion":expiracion_str(max_exp),
+            "vol_est":r["vol_est"],"hora":hora_scan,
+            "n_patrones":len(pat_al),"conf_label":conf_label,
+            "patrones_nombres":nombres,
+        })
+
+        # FIX: evitar duplicados en historial por activo+hora
+        ya_existe = any(h["activo"]==r["activo"] and h["hora"]==hora_scan for h in st.session_state.historial)
+        if not ya_existe:
+            st.session_state.historial.append({
+                "fecha":date.today().strftime("%d/%m"),"hora":hora_scan,
+                "activo":r["activo"],"dir":dir_dom,
+                "conf":int(conf_score),"conf_label":conf_label,
+                "n_patrones":len(pat_al),"expiracion":expiracion_str(max_exp),
+                "resultado":None,
+            })
+
+    alertas.sort(key=lambda x: x["conf"], reverse=True)
+    st.session_state.alertas  = alertas
+    st.session_state.ultimo_scan = datetime.now().strftime("%H:%M:%S")
+    st.session_state.confirmadas = set()
+    st.session_state.ia_analisis = ""
     st.rerun()
 
 # ================================================================
 # TABS
 # ================================================================
-tab_radar, tab_patrones, tab_alertas, tab_stats = st.tabs([
-    "📡 RADAR",
-    "🔍 PATRONES DETECTADOS",
-    "🚨 ALERTAS ACTIVAS",
-    "📊 ESTADISTICAS",
+tab_radar, tab_ranking, tab_alert, tab_hist, tab_tracker, tab_atr, tab_stats = st.tabs([
+    "RADAR","RANKING","ALERTAS","HISTORIAL","TRACKER","VOLATILIDAD ATR","ESTADISTICAS"
 ])
 
-# ──────────────────────────────────────────────
-# TAB 1 — RADAR
-# ──────────────────────────────────────────────
+# ── RADAR ──────────────────────────────────────
 with tab_radar:
-    if not st.session_state.scan_results:
-        st.markdown("""
-        <div style='text-align:center;padding:60px 20px;'>
-          <div style='font-size:48px;margin-bottom:16px;'>🔍</div>
-          <div style='font-family:"Rajdhani",sans-serif;font-size:24px;color:#475569;'>
-          Presiona ESCANEAR AHORA</div>
-          <div style='font-family:"Share Tech Mono",monospace;font-size:11px;color:#334155;margin-top:8px;'>
-          El sistema analizara los 6 activos en busca de los 8 patrones</div>
-        </div>""", unsafe_allow_html=True)
+    if not st.session_state.resultados_scan:
+        st.markdown("<div style='text-align:center;padding:60px;'><div style='font-size:48px;'>🔍</div><div style='font-family:\"Rajdhani\",sans-serif;font-size:24px;color:#5a7a99;margin-top:12px;'>Presiona ESCANEAR MERCADO</div><div style='font-family:\"Share Tech Mono\",monospace;font-size:11px;color:#6a8aaa;margin-top:6px;'>8 patrones · 6 activos · ATR · MACD · Confluencia · Ranking</div></div>", unsafe_allow_html=True)
     else:
-        # KPIs
-        total_patterns = sum(len(r["patterns"]) for r in st.session_state.scan_results)
-        signals = sum(1 for r in st.session_state.scan_results if r["has_signal"])
-        bull_count = sum(1 for r in st.session_state.scan_results for p in r["patterns"] if p["dir"]=="BULL" and p["trend_aligned"])
-        bear_count = sum(1 for r in st.session_state.scan_results for p in r["patterns"] if p["dir"]=="BEAR" and p["trend_aligned"])
-
-        k1,k2,k3,k4 = st.columns(4)
-        for col, label, val, color, sub in [
-            (k1, "PATRONES TOTALES", str(total_patterns), "#c8920a", "en todos los activos"),
-            (k2, "SEÑALES VALIDAS",  str(signals),        "#34d399", "alineadas con tendencia"),
-            (k3, "BULL SIGNALS",     str(bull_count),     "#34d399", "oportunidades LONG"),
-            (k4, "BEAR SIGNALS",     str(bear_count),     "#f87171", "oportunidades SHORT"),
-        ]:
+        t_pat  = sum(len(r["patrones"]) for r in st.session_state.resultados_scan)
+        n_sig  = sum(1 for r in st.session_state.resultados_scan if r["tiene_senal"])
+        n_conf = sum(1 for r in st.session_state.resultados_scan if r["n_alineados"]>=2)
+        n_alc  = sum(1 for r in st.session_state.resultados_scan for p in r["patrones"] if p["dir"]=="ALCISTA" and p.get("alineado"))
+        for col, lbl, val, color, sub in zip(st.columns(4),
+            ["PATRONES TOTALES","SEÑALES VALIDAS","CONFLUENCIAS","SEÑALES ALCISTAS"],
+            [str(t_pat),str(n_sig),str(n_conf),str(n_alc)],
+            ["#c8920a","#34d399","#fbbf24","#34d399"],
+            ["detectados","alineadas","doble+ patron","oportunidad CALL"]):
             with col:
-                st.markdown(f"""<div class="kpi">
-                  <div class="kpi-label">{label}</div>
-                  <div class="kpi-value" style="color:{color};">{val}</div>
-                  <div class="kpi-sub">{sub}</div>
-                </div>""", unsafe_allow_html=True)
+                st.markdown(f'<div class="kpi"><div class="kpi-label">{lbl}</div><div class="kpi-value" style="color:{color};">{val}</div><div class="kpi-sub">{sub}</div></div>', unsafe_allow_html=True)
 
-        st.markdown('<div class="sec" style="margin-top:16px;">ESTADO DE ACTIVOS</div>', unsafe_allow_html=True)
-
-        for r in st.session_state.scan_results:
-            has_bull = any(p["dir"]=="BULL" and p["trend_aligned"] for p in r["patterns"])
-            has_bear = any(p["dir"]=="BEAR" and p["trend_aligned"] for p in r["patterns"])
-            signal_color = "#34d399" if has_bull else ("#f87171" if has_bear else "#475569")
-            signal_text  = "BULL SIGNAL" if has_bull else ("BEAR SIGNAL" if has_bear else "SIN SENAL")
-            signal_bg    = "#022c22" if has_bull else ("#2d0d0d" if has_bear else "#0f172a")
-
-            price_str = f"{r['price']:.2f}" if r["price"] > 0 else "Sin datos"
-            rsi_color = "#f87171" if r["rsi"] > 70 else ("#34d399" if r["rsi"] < 30 else "#94a3b8")
-
+        st.markdown('<div class="sec" style="margin-top:14px;">ESTADO DE ACTIVOS</div>', unsafe_allow_html=True)
+        for r in st.session_state.resultados_scan:
+            alc = any(p["dir"]=="ALCISTA" and p.get("alineado") for p in r["patrones"])
+            baj = any(p["dir"]=="BAJISTA" and p.get("alineado") for p in r["patrones"])
+            es_conf = r["n_alineados"] >= 2
+            if r["mercado_plano"]:       sc,st_,sb = "#f87171","SIN FUERZA — NO OPERAR","#fff0f0"
+            elif es_conf and alc:        sc,st_,sb = "#c8920a","CONFLUENCIA ALCISTA","#fff8e7"
+            elif es_conf and baj:        sc,st_,sb = "#c8920a","CONFLUENCIA BAJISTA","#fff8e7"
+            elif alc:                    sc,st_,sb = "#34d399","SEÑAL ALCISTA","#e8f9f0"
+            elif baj:                    sc,st_,sb = "#f87171","SEÑAL BAJISTA","#fff0f0"
+            else:                        sc,st_,sb = "#475569","SIN SEÑAL","#f0f6fc"
+            precio_s = f"{r['precio']:.2f}" if r["precio"] > 0 else "Sin datos"
+            rc = "#f87171" if r["rsi"]>70 else ("#34d399" if r["rsi"]<30 else "#94a3b8")
             st.markdown(f"""
             <div class="asset-row" style="border-left:4px solid {r['info']['color']};">
               <div>
-                <div class="asset-name">{r['asset']}</div>
-                <div class="asset-price">{r['info']['tipo']} · {price_str}</div>
+                <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:18px;color:#0f2035;">{r['activo']}</div>
+                <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#5a7a99;">{r['info']['tipo']} · {precio_s}</div>
               </div>
-              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                <span style="background:{signal_bg};color:{signal_color};border:1px solid {signal_color}33;
-                padding:4px 12px;border-radius:20px;font-family:'Share Tech Mono',monospace;
-                font-size:9px;font-weight:700;">{signal_text}</span>
-                <span style="color:{r['trend_col']};font-family:'Share Tech Mono',monospace;font-size:9px;">
-                {r['trend']}</span>
-                <span style="color:{rsi_color};font-family:'Share Tech Mono',monospace;font-size:9px;">
-                RSI {r['rsi']:.0f}</span>
-                <span style="color:#475569;font-family:'Share Tech Mono',monospace;font-size:9px;">
-                {len(r['patterns'])} patrones</span>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                <span style="background:{sb};color:{sc};border:1px solid {sc}44;padding:4px 12px;border-radius:20px;font-family:'Share Tech Mono',monospace;font-size:9px;font-weight:700;">{st_}</span>
+                <span style="color:{r['tend_col']};font-family:'Share Tech Mono',monospace;font-size:9px;">{r['tendencia']}</span>
+                <span style="color:{r['vol_col']};font-family:'Share Tech Mono',monospace;font-size:9px;">ATR:{r['vol_est']}</span>
+                <span style="color:{rc};font-family:'Share Tech Mono',monospace;font-size:9px;">RSI:{r['rsi']:.0f}</span>
               </div>
             </div>""", unsafe_allow_html=True)
 
-# ──────────────────────────────────────────────
-# TAB 2 — PATRONES DETECTADOS
-# ──────────────────────────────────────────────
-with tab_patrones:
-    if not st.session_state.scan_results:
-        st.markdown('<div style="text-align:center;padding:40px;font-family:\'Share Tech Mono\',monospace;font-size:11px;color:#475569;">Ejecuta el scanner primero</div>', unsafe_allow_html=True)
+# ── RANKING ─────────────────────────────────────
+with tab_ranking:
+    st.markdown('<div class="sec">RANKING — MEJOR OPORTUNIDAD AHORA</div>', unsafe_allow_html=True)
+    if not st.session_state.resultados_scan:
+        st.markdown('<div style="text-align:center;padding:40px;font-family:\'Share Tech Mono\',monospace;font-size:11px;color:#5a7a99;">Ejecuta el escaneo para ver el ranking</div>', unsafe_allow_html=True)
     else:
-        for r in st.session_state.scan_results:
-            if not r["patterns"]: continue
-            st.markdown(f'<div class="sec">{r["asset"]} — {len(r["patterns"])} PATRONES</div>', unsafe_allow_html=True)
-
-            for p in r["patterns"]:
-                dir_color = "#34d399" if p["dir"]=="BULL" else "#f87171"
-                dir_bg    = "#022c22" if p["dir"]=="BULL" else "#2d0d0d"
-                aligned_html = '<span style="color:#fbbf24;font-family:\'Share Tech Mono\',monospace;font-size:9px;"> ★ ALINEADO CON TENDENCIA</span>' if p.get("trend_aligned") else '<span style="color:#475569;font-family:\'Share Tech Mono\',monospace;font-size:9px;"> contra tendencia</span>'
-                pat_info = PATTERNS.get(p["pattern"], {})
-                fill_class = "conf-fill-green" if p["dir"]=="BULL" else "conf-fill-red"
-
+        ranking = [r for r in st.session_state.resultados_scan if r["score"] > 0]
+        if not ranking:
+            st.markdown('<div style="text-align:center;padding:30px;background:#f0f6fc;border:1px solid #bdd4e8;border-radius:10px;font-family:\'Share Tech Mono\',monospace;font-size:11px;color:#5a7a99;">El mercado no presenta buenas oportunidades ahora mismo</div>', unsafe_allow_html=True)
+        else:
+            medallas = ["🥇","🥈","🥉"]
+            for i, r in enumerate(ranking):
+                dir_col = "#34d399" if r["dir_dom"]=="ALCISTA" else "#f87171"
+                accion  = "CALL / LONG" if r["dir_dom"]=="ALCISTA" else "PUT / SHORT"
+                es_conf = r["n_alineados"] >= 2
+                borde   = "border:2px solid #c8920a;" if es_conf else "border:1px solid #bdd4e8;"
+                conf_badge = f'<span class="conf-multi-badge">{r["conf_label"]}</span>' if es_conf else ""
+                score_pct  = min(100, r["score"])
+                exp_str    = expiracion_str(r["max_exp"])
+                med = medallas[i] if i < 3 else str(i+1)
                 st.markdown(f"""
-                <div class="pattern-card {'bullish' if p['dir']=='BULL' else 'bearish'}">
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                    <div>
-                      <span style="font-family:'Rajdhani',sans-serif;font-weight:700;
-                      font-size:16px;color:#f1f5f9;">{p['pattern']}</span>
-                      {aligned_html}
+                <div class="rank-card" style="{borde}">
+                  <div class="rank-num">{med}</div>
+                  <div style="flex:1;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;">
+                      <span style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:20px;color:#0f2035;">{r['activo']}</span>
+                      <span style="background:#e8f0f7;color:{dir_col};border:1px solid {dir_col}44;padding:3px 10px;border-radius:20px;font-family:'Share Tech Mono',monospace;font-size:9px;font-weight:700;">{r['dir_dom']}</span>
+                      {conf_badge}
                     </div>
-                    <span style="background:{dir_bg};color:{dir_color};border:1px solid {dir_color}44;
-                    padding:4px 12px;border-radius:20px;font-family:'Share Tech Mono',monospace;
-                    font-size:10px;font-weight:700;">{p['dir']}</span>
-                  </div>
-                  <div style="font-size:11px;color:#64748b;margin-bottom:8px;">
-                  {pat_info.get('desc','')}</div>
-                  <div class="conf-bar"><div class="{fill_class}" style="width:{p['conf']}%;"></div></div>
-                  <div style="display:flex;justify-content:space-between;font-family:'Share Tech Mono',monospace;font-size:9px;color:#475569;">
-                    <span>Confianza: <b style="color:{dir_color};">{p['conf']}%</b></span>
-                    <span>Efectividad historica: {pat_info.get('efectividad',0)}%</span>
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+                      <span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#5a7a99;">{accion}</span>
+                      <span class="exp-badge">EXPIRACION: {exp_str}</span>
+                      <span style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#c8920a;">{r['n_alineados']} patron(es)</span>
+                    </div>
+                    <div style="height:6px;background:#bdd4e8;border-radius:3px;overflow:hidden;">
+                      <div style="height:100%;width:{score_pct}%;background:linear-gradient(90deg,#92400e,#c8920a);border-radius:3px;"></div>
+                    </div>
+                    <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#5a7a99;margin-top:3px;">Score: {r['score']:.0f}/100 · ATR:{r['vol_est']} · {r['tendencia']}</div>
                   </div>
                 </div>""", unsafe_allow_html=True)
 
-# ──────────────────────────────────────────────
-# TAB 3 — ALERTAS
-# ──────────────────────────────────────────────
-with tab_alertas:
-    st.markdown('<div class="sec">ALERTAS ACTIVAS — SEÑALES DE ALTA CONFIANZA</div>', unsafe_allow_html=True)
-
-    if not st.session_state.alerts:
-        st.markdown("""
-        <div style='text-align:center;padding:40px;background:#0f172a;border:1px solid #1e293b;border-radius:10px;'>
-          <div style='font-size:32px;margin-bottom:10px;'>📡</div>
-          <div style='font-family:"Share Tech Mono",monospace;font-size:11px;color:#475569;'>
-          Sin alertas activas — ejecuta el scanner para detectar patrones</div>
-        </div>""", unsafe_allow_html=True)
+# ── ALERTAS ─────────────────────────────────────
+with tab_alert:
+    st.markdown('<div class="sec">ALERTAS ACTIVAS — ALTA CONFIANZA</div>', unsafe_allow_html=True)
+    if not st.session_state.alertas:
+        st.markdown("<div style='text-align:center;padding:50px;background:#f0f6fc;border:1px solid #bdd4e8;border-radius:12px;'><div style='font-size:40px;margin-bottom:12px;'>📡</div><div style='font-family:\"Rajdhani\",sans-serif;font-size:20px;color:#5a7a99;'>Sin alertas activas</div><div style='font-family:\"Share Tech Mono\",monospace;font-size:11px;color:#6a8aaa;margin-top:8px;'>Ejecuta el escaneo para detectar oportunidades</div></div>", unsafe_allow_html=True)
     else:
-        for alert in st.session_state.alerts:
-            is_bull = alert["dir"] == "BULL"
-            card_class = "alert-bull" if is_bull else "alert-bear"
-            icon = "▲" if is_bull else "▼"
-            col = "#34d399" if is_bull else "#f87171"
-            action = "CALL / LONG" if is_bull else "PUT / SHORT"
+        for i, al in enumerate(st.session_state.alertas):
+            if solo_confluencia and al.get("n_patrones",1) < 2: continue
+            es_alc  = al["dir"] == "ALCISTA"
+            es_conf = al.get("n_patrones",1) >= 2
+            cc      = "confluencia-card" if es_conf else ("alert-alcista" if es_alc else "alert-bajista")
+            ic      = "▲" if es_alc else "▼"
+            col     = "#34d399" if es_alc else "#f87171"
+            acc     = "CALL / LONG" if es_alc else "PUT / SHORT"
+            conf_i  = i in st.session_state.confirmadas
+            conf_badge = f'<span class="conf-multi-badge">{al["conf_label"]}</span>' if es_conf else ""
 
             st.markdown(f"""
-            <div class="alert-card {card_class}">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div class="{cc}" style="{'opacity:0.5;' if conf_i else ''}">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
                 <div>
-                  <span style="font-family:'Rajdhani',sans-serif;font-weight:700;
-                  font-size:22px;color:{col};">{icon} {alert['asset']}</span>
-                  <span style="font-family:'Share Tech Mono',monospace;font-size:10px;
-                  color:#64748b;margin-left:10px;">{alert['hora']} · ${alert['price']:.2f}</span>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:26px;color:{col};">{ic} {al['activo']}</div>
+                    {conf_badge}
+                  </div>
+                  <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#3a5570;">{al['hora']} · ${al['precio']:.2f} · Vol:{al['vol_est']}</div>
                 </div>
-                <span style="font-family:'Rajdhani',sans-serif;font-weight:700;
-                font-size:18px;color:{col};">{action}</span>
+                <div style="text-align:right;">
+                  <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:20px;color:{col};">{acc}</div>
+                  <span class="exp-badge">EXPIRACION: {al['expiracion']}</span>
+                </div>
               </div>
-              <div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">
-              Patron: <b style="color:{col};">{alert['pattern']}</b></div>
-              <div style="display:flex;gap:8px;align-items:center;">
-                <div style="flex:1;height:6px;background:#1e293b;border-radius:3px;overflow:hidden;">
-                  <div style="height:100%;width:{alert['conf']}%;background:{col};border-radius:3px;"></div>
+              <div style="font-size:12px;color:#4a6080;margin-bottom:8px;">Patrones: <b style="color:{col};">{al['patrones_nombres']}</b></div>
+              <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+                <div style="flex:1;height:8px;background:#bdd4e8;border-radius:4px;overflow:hidden;">
+                  <div style="height:100%;width:{al['conf']}%;background:{col};border-radius:4px;"></div>
                 </div>
-                <span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:{col};">
-                {alert['conf']}%</span>
+                <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:{col};font-weight:700;">{al['conf']}%</span>
               </div>
             </div>""", unsafe_allow_html=True)
 
-        # IA Analysis of alerts
-        if st.session_state.api_key.startswith("sk-ant-") and st.session_state.alerts:
+            _, c2, c3 = st.columns([2,1,1])
+            with c2:
+                if not conf_i and st.button("OK LEIDA", key=f"ok_{i}"):
+                    st.session_state.confirmadas.add(i)
+                    st.rerun()
+            with c3:
+                # FIX: key unico por alerta usando su id — robusto ante reruns
+                tracker_key = f"tracker_{al.get('id','')}"
+                ya_trackeada = any(t.get("alerta_id")==al.get("id") for t in st.session_state.tracker)
+                if conf_i and not ya_trackeada:
+                    res = st.selectbox("Resultado", ["—","WIN","LOSS"], key=tracker_key, label_visibility="collapsed")
+                    if res in ("WIN","LOSS"):
+                        st.session_state.tracker.append({
+                            "alerta_id":al.get("id",""),
+                            "activo":al["activo"],"dir":al["dir"],
+                            "resultado":res,"hora":al["hora"],
+                            "conf":al["conf"],"patron":al["patrones_nombres"],
+                        })
+                        st.rerun()
+
+        # Analisis IA
+        if ia_ok:
             st.markdown("---")
-            if st.button("ANALIZAR ALERTAS CON IA", key="ai_alerts"):
-                alerts_text = "\n".join([
-                    f"{a['asset']} - {a['dir']} - {a['pattern']} - Confianza {a['conf']}%"
-                    for a in st.session_state.alerts
+            if st.button("ANALIZAR CON IA — MEJOR OPORTUNIDAD", key="ia_al"):
+                txt_al = "\n".join([
+                    f"{a['activo']} - {a['dir']} - {a['patrones_nombres']} - Score:{a['conf']}% - {a['conf_label']} - Exp:{a['expiracion']}"
+                    for a in st.session_state.alertas
                 ])
-                sys = """Eres el analista de patrones de Hector. Analiza estas alertas de patrones tecnicos
-y dime cuales son las 2 mejores oportunidades para operar AHORA en IQ Option M15.
-Considera confluencia de patrones, horario UTC actual, y riesgo. Max 150 palabras. En espanol."""
-                with st.spinner("Analizando alertas..."):
-                    resp = requests.post(
-                        "https://api.anthropic.com/v1/messages",
-                        headers={"Content-Type":"application/json",
-                                 "x-api-key":st.session_state.api_key,
-                                 "anthropic-version":"2023-06-01"},
-                        json={"model":"claude-sonnet-4-20250514","max_tokens":400,
-                              "system":sys,
-                              "messages":[{"role":"user","content":f"Alertas actuales:\n{alerts_text}"}]},
-                        timeout=30
-                    )
-                    if resp.status_code == 200:
-                        text = resp.json()["content"][0]["text"]
-                        st.markdown(f"""
-                        <div style="background:#1a1200;border:1px solid #c8920a;border-radius:8px;
-                        padding:16px;font-size:13px;color:#e2e8f0;line-height:1.8;">
-                        {text.replace(chr(10),'<br>')}
-                        </div>""", unsafe_allow_html=True)
+                sys_p = "Eres analista de Hector. Capital $467, objetivo $50/dia, IQ Option M15. Analiza estas alertas y dime las 2 MEJORES oportunidades ahora mismo. Prioriza las dobles confluencias. Indica activo, CALL o PUT, expiracion y razon. Max 150 palabras. Espanol."
+                with st.spinner("Analizando con IA..."):
+                    try:
+                        r = requests.post("https://api.anthropic.com/v1/messages",
+                            headers={"Content-Type":"application/json","x-api-key":st.session_state.api_key,"anthropic-version":"2023-06-01"},
+                            json={"model":"claude-sonnet-4-20250514","max_tokens":400,"system":sys_p,
+                                  "messages":[{"role":"user","content":f"Alertas:\n{txt_al}"}]}, timeout=30)
+                        if r.status_code == 200:
+                            st.session_state.ia_analisis = r.json()["content"][0]["text"]
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+            if st.session_state.ia_analisis:
+                st.markdown(f'<div style="background:#fff8e7;border:1px solid #c8920a;border-radius:10px;padding:16px;font-size:13px;color:#1a2940;line-height:1.8;margin-top:10px;">{st.session_state.ia_analisis.replace(chr(10),"<br>")}</div>', unsafe_allow_html=True)
 
-# ──────────────────────────────────────────────
-# TAB 4 — ESTADISTICAS
-# ──────────────────────────────────────────────
+# ── HISTORIAL ───────────────────────────────────
+with tab_hist:
+    st.markdown('<div class="sec">HISTORIAL DEL DIA — SEÑALES DETECTADAS</div>', unsafe_allow_html=True)
+    if not st.session_state.historial:
+        st.markdown("<div style='text-align:center;padding:40px;background:#f0f6fc;border:1px solid #bdd4e8;border-radius:10px;'><div style='font-size:32px;margin-bottom:10px;'>📋</div><div style='font-family:\"Share Tech Mono\",monospace;font-size:11px;color:#5a7a99;'>Sin señales en el historial de hoy.</div></div>", unsafe_allow_html=True)
+    else:
+        n_unicas = len(set(h["activo"] for h in st.session_state.historial))
+        st.markdown(f'<div style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:#5a7a99;margin-bottom:10px;">{len(st.session_state.historial)} señales registradas · {n_unicas} activos distintos</div>', unsafe_allow_html=True)
+        for h in reversed(st.session_state.historial):
+            dc = "#34d399" if h["dir"]=="ALCISTA" else "#f87171"
+            es_conf = h.get("n_patrones",1) >= 2
+            borde = f"border-left:3px solid #c8920a;" if es_conf else f"border-left:3px solid {dc};"
+            st.markdown(f"""
+            <div class="hist-item" style="{borde}">
+              <div>
+                <span style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:16px;color:#0f2035;">{h['activo']}</span>
+                <span style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#5a7a99;margin-left:8px;">{h['fecha']} {h['hora']}</span>
+              </div>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                <span style="color:{dc};font-family:'Share Tech Mono',monospace;font-size:10px;font-weight:700;">{h['dir']}</span>
+                <span class="exp-badge">{h['expiracion']}</span>
+                {f'<span class="conf-multi-badge">{h["conf_label"]}</span>' if es_conf else ''}
+                <span style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#c8920a;">{h['conf']}%</span>
+              </div>
+            </div>""", unsafe_allow_html=True)
+        _, col_d = st.columns([3,1])
+        with col_d:
+            if st.button("Limpiar historial", key="clear_hist"):
+                st.session_state.historial = []
+                st.rerun()
+
+# ── TRACKER ─────────────────────────────────────
+with tab_tracker:
+    st.markdown('<div class="sec">TRACKER WIN/LOSS — RENDIMIENTO DEL DETECTOR</div>', unsafe_allow_html=True)
+    wins   = [t for t in st.session_state.tracker if t["resultado"]=="WIN"]
+    losses = [t for t in st.session_state.tracker if t["resultado"]=="LOSS"]
+    total  = len(wins) + len(losses)
+    wr     = int(len(wins)/total*100) if total > 0 else 0
+    col_wr = "#34d399" if wr>=60 else ("#fbbf24" if wr>=50 else "#f87171")
+
+    for col, lbl, val, color in zip(st.columns(4),
+        ["WINS","LOSSES","WIN RATE","OPERACIONES"],
+        [str(len(wins)),str(len(losses)),f"{wr}%",str(total)],
+        ["#34d399","#f87171",col_wr,"#c8920a"]):
+        with col:
+            st.markdown(f'<div class="kpi"><div class="kpi-label">{lbl}</div><div class="kpi-value" style="color:{color};">{val}</div></div>', unsafe_allow_html=True)
+
+    if total > 0:
+        st.markdown('<div class="sec" style="margin-top:14px;">OPERACIONES TRACKEADAS</div>', unsafe_allow_html=True)
+        for t in reversed(st.session_state.tracker):
+            rc = "#34d399" if t["resultado"]=="WIN" else "#f87171"
+            st.markdown(f"""
+            <div class="hist-item" style="border-left:3px solid {rc};">
+              <div>
+                <span style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:15px;color:#0f2035;">{t['activo']}</span>
+                <span style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#5a7a99;margin-left:8px;">{t['hora']} · {t['dir']}</span>
+              </div>
+              <div style="display:flex;gap:6px;align-items:center;">
+                <span style="font-size:11px;color:#3a5570;">{t['patron'][:35]}</span>
+                <span style="color:{rc};border:1px solid {rc}44;padding:3px 10px;border-radius:20px;font-family:'Share Tech Mono',monospace;font-size:10px;font-weight:700;">{t['resultado']}</span>
+              </div>
+            </div>""", unsafe_allow_html=True)
+
+        if wr < 50 and total >= 5:
+            st.markdown('<div class="atr-flat" style="margin-top:10px;"><b style="color:#f87171;">Win rate bajo 50% — Subir confianza minima a 68% o activar "Solo confluencias"</b></div>', unsafe_allow_html=True)
+        elif wr >= 65 and total >= 5:
+            st.markdown('<div class="atr-ok" style="margin-top:10px;"><b style="color:#34d399;">Excelente win rate — El detector esta calibrado correctamente</b></div>', unsafe_allow_html=True)
+
+        if st.button("Reset tracker", key="reset_tracker"):
+            st.session_state.tracker = []
+            st.rerun()
+    else:
+        st.markdown("<div style='text-align:center;padding:40px;background:#f0f6fc;border:1px solid #bdd4e8;border-radius:10px;'><div style='font-family:\"Share Tech Mono\",monospace;font-size:11px;color:#5a7a99;'>Confirma alertas como leidas y luego registra WIN o LOSS para trackear el rendimiento del detector.</div></div>", unsafe_allow_html=True)
+
+# ── VOLATILIDAD ATR ─────────────────────────────
+with tab_atr:
+    st.markdown('<div class="sec">VOLATILIDAD ATR — FILTRO DE MERCADO</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div style="background:#f0f6fc;border:1px solid #bdd4e8;border-radius:10px;padding:14px 16px;margin-bottom:14px;">
+      <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:16px;color:#c8920a;margin-bottom:8px;">Por que el ATR protege tu capital</div>
+      <div style="font-size:13px;color:#4a6080;line-height:1.8;">
+      El <b style="color:#0f2035;">ATR</b> mide la fuerza real del mercado en 14 velas. Mercado plano = el spread te come la ganancia antes de que el patron se desarrolle.<br><br>
+      <b style="color:#34d399;">FUERTE (mayor 90%):</b> Operar con confianza<br>
+      <b style="color:#fbbf24;">NORMAL (60-90%):</b> Operar con precaucion<br>
+      <b style="color:#f87171;">PLANO (menor 60%):</b> NO OPERAR — señales bloqueadas automaticamente
+      </div>
+    </div>""", unsafe_allow_html=True)
+
+    if not st.session_state.resultados_scan:
+        st.markdown('<div style="text-align:center;padding:30px;font-family:\'Share Tech Mono\',monospace;font-size:11px;color:#5a7a99;">Ejecuta el escaneo primero</div>', unsafe_allow_html=True)
+    else:
+        for r in st.session_state.resultados_scan:
+            if r["sin_datos"]: continue
+            vp = min(100, r["vol_pct"])
+            fc = "vol-fill-green" if r["vol_est"]=="FUERTE" else ("vol-fill-gold" if r["vol_est"]=="NORMAL" else "vol-fill-red")
+            st.markdown(f"""
+            <div class="{r['vol_cls']}" style="margin-bottom:10px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <div>
+                  <span style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:18px;color:#0f2035;">{r['activo']}</span>
+                  <span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:{r['vol_col']};margin-left:10px;">{r['vol_est']}</span>
+                </div>
+                <span style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:22px;color:{r['vol_col']};">{vp:.0f}%</span>
+              </div>
+              <div class="vol-track"><div class="{fc}" style="width:{vp}%;"></div></div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:{r['vol_col']};margin-top:4px;">{r['vol_msg']}</div>
+            </div>""", unsafe_allow_html=True)
+
+# ── ESTADISTICAS ────────────────────────────────
 with tab_stats:
-    st.markdown('<div class="sec">EFECTIVIDAD HISTORICA DE LOS 8 PATRONES</div>', unsafe_allow_html=True)
-
-    for name, info in sorted(PATTERNS.items(), key=lambda x: x[1]["efectividad"], reverse=True):
-        ef = info["efectividad"]
-        color = "#34d399" if ef >= 68 else ("#fbbf24" if ef >= 64 else "#f87171")
+    st.markdown('<div class="sec">EFECTIVIDAD HISTORICA — 8 PATRONES</div>', unsafe_allow_html=True)
+    for nombre, ip in sorted(PATRONES.items(), key=lambda x: x[1]["efectividad"], reverse=True):
+        ef = ip["efectividad"]; color = "#34d399" if ef>=68 else ("#fbbf24" if ef>=64 else "#f87171")
+        peso_s = "★" * ip["peso"]
         st.markdown(f"""
-        <div style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;
-        padding:12px 16px;margin-bottom:8px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-            <span style="font-family:'Rajdhani',sans-serif;font-weight:700;
-            font-size:15px;color:#f1f5f9;">{name}</span>
-            <span style="font-family:'Rajdhani',sans-serif;font-weight:700;
-            font-size:20px;color:{color};">{ef}%</span>
+        <div style="background:#f0f6fc;border:1px solid #bdd4e8;border-radius:8px;padding:12px 16px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <div>
+              <span style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:15px;color:#0f2035;">{nombre}</span>
+              <span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#c8920a;margin-left:8px;">{peso_s}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span class="exp-badge">EXP: {expiracion_str(ip['min_exp'])}</span>
+              <span style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:20px;color:{color};">{ef}%</span>
+            </div>
           </div>
-          <div style="height:6px;background:#1e293b;border-radius:3px;overflow:hidden;margin-bottom:6px;">
+          <div style="height:5px;background:#bdd4e8;border-radius:3px;overflow:hidden;margin-bottom:5px;">
             <div style="height:100%;width:{ef}%;background:{color};border-radius:3px;"></div>
           </div>
-          <div style="font-size:11px;color:#475569;">{info['desc']}</div>
-        </div>""", unsafe_allow_html=True)
-
-    st.markdown('<div class="sec">ACTIVOS Y SPREADS</div>', unsafe_allow_html=True)
-    for asset, info in ASSETS.items():
-        st.markdown(f"""
-        <div style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;
-        padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
-          <div>
-            <span style="font-family:'Rajdhani',sans-serif;font-weight:700;
-            font-size:15px;color:{info['color']};">{asset}</span>
-            <span style="font-family:'Share Tech Mono',monospace;font-size:9px;
-            color:#475569;margin-left:8px;">{info['tipo']}</span>
-          </div>
-          <span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#64748b;">
-          Spread: {info['spread']}</span>
+          <div style="font-size:11px;color:#5a7a99;">{ip['desc']} · Peso en confluencia: {ip['peso']}/3</div>
         </div>""", unsafe_allow_html=True)
 
 # ================================================================
 # FOOTER
 # ================================================================
 st.markdown("""
-<div style="border-top:1px solid #1e293b;margin-top:24px;padding-top:10px;
-text-align:center;font-family:'Share Tech Mono',monospace;font-size:9px;color:#334155;
-letter-spacing:2px;">
-HECTOR PATTERN DETECTOR · 8 PATRONES · 6 ACTIVOS · M15 · IQ OPTION READY
+<div style="border-top:1px solid #bdd4e8;margin-top:24px;padding-top:10px;
+text-align:center;font-family:'Share Tech Mono',monospace;font-size:9px;color:#6a8aaa;letter-spacing:2px;">
+HECTOR PATTERN DETECTOR v4 · ATR · MACD · CONFLUENCIA · RANKING · HISTORIAL · TRACKER · 8 PATRONES · 6 ACTIVOS
 </div>""", unsafe_allow_html=True)
