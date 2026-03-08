@@ -716,19 +716,6 @@ with st.sidebar:
     <div style='font-family:"Share Tech Mono",monospace;font-size:8px;color:#5a7a99;'>WIN%</div></div>
     </div></div>""", unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;letter-spacing:2px;margin-bottom:6px;">TELEGRAM ALERTAS</div>', unsafe_allow_html=True)
-    tg_on = st.checkbox("Enviar alertas a Telegram", value=st.session_state.telegram_on, key="tg_chk")
-    st.session_state.telegram_on = tg_on
-    if tg_on:
-        st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#34d399;">@hpd_alerts_bot ACTIVO</div>', unsafe_allow_html=True)
-        if st.button("Enviar prueba", key="tg_test"):
-            ok = enviar_telegram(st.session_state.telegram_token, st.session_state.telegram_chat_id, "✅ <b>Hector Pattern Detector</b>\nConexion Telegram OK! Las alertas llegaran aqui.")
-            if ok:
-                st.success("Mensaje enviado!")
-            else:
-                st.error("Error al enviar")
-
 # ================================================================
 # HEADER + BARRA DE SESION
 # ================================================================
