@@ -218,6 +218,58 @@ html, body, .stApp { background:#e8f0f7 !important; }
 </style>
 """, unsafe_allow_html=True)
 
+
+# ================================================================
+# TELEGRAM
+# ================================================================
+def enviar_telegram(token, chat_id, mensaje):
+    """Envia mensaje a Telegram. Retorna True si OK."""
+    try:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        r = requests.post(url, json={
+            "chat_id": chat_id,
+            "text": mensaje,
+            "parse_mode": "HTML"
+        }, timeout=10)
+        return r.status_code == 200
+    except:
+        return False
+
+
+# ================================================================
+# TELEGRAM
+# ================================================================
+def enviar_telegram(token, chat_id, mensaje):
+    """Envia mensaje a Telegram"""
+    try:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        r = requests.post(url, json={
+            "chat_id": chat_id,
+            "text": mensaje,
+            "parse_mode": "HTML"
+        }, timeout=10)
+        return r.status_code == 200
+    except:
+        return False
+
+def armar_mensaje_alerta(alerta, capital=467.86):
+    """Arma el mensaje de Telegram para una alerta"""
+    ic  = "📈" if alerta["dir"] == "ALCISTA" else "📉"
+    acc = "CALL / LONG" if alerta["dir"] == "ALCISTA" else "PUT / SHORT"
+    entrada_2pct = capital * 0.02
+    msg = (
+        f"🔔 <b>ALERTA HECTOR PATTERN DETECTOR</b>\n\n"
+        f"{ic} <b>{alerta['activo']}</b> — {acc}\n"
+        f"📊 Score: <b>{alerta['conf']}%</b> — {alerta['conf_label']}\n"
+        f"🕯 Patrones: {alerta['patrones_nombres']}\n"
+        f"⏱ Expiracion: {alerta['expiracion']}\n"
+        f"💰 Precio: ${alerta['precio']:.2f}\n"
+        f"📥 Entrada sugerida (2%): <b>${entrada_2pct:.2f}</b>\n"
+        f"🕐 Hora: {alerta['hora']} UTC\n\n"
+        f"✅ Confirma en el dashboard antes de entrar"
+    )
+    return msg
+
 # ================================================================
 # SESSION STATE
 # ================================================================
@@ -239,6 +291,9 @@ defaults = {
     "hora_inicio_op": "07:00",
     "hora_fin_op": "16:00",
     "ultima_alerta_sonido": "",
+    "telegram_token": "8310236833:AAGfspKyA4_ombrw_lZvP6ic-KvTfpDIc4o",
+    "telegram_chat_id": "1495197167",
+    "telegram_on": True,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -618,6 +673,30 @@ with st.sidebar:
             st.session_state.radar_bloqueado = False
             st.rerun()
 
+    # ── TELEGRAM ──
+    st.markdown("---")
+    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;letter-spacing:2px;margin-bottom:6px;">NOTIFICACIONES TELEGRAM</div>', unsafe_allow_html=True)
+    tg_on = st.checkbox("Activar alertas Telegram", value=st.session_state.telegram_on, key="tg_chk")
+    st.session_state.telegram_on = tg_on
+    if tg_on:
+        tg_token = st.text_input("Token del bot", value=st.session_state.telegram_token,
+            placeholder="8310236833:AAG...", type="password", key="tg_token", label_visibility="collapsed")
+        tg_chat  = st.text_input("Chat ID", value=st.session_state.telegram_chat_id,
+            placeholder="1495197167", key="tg_chat", label_visibility="collapsed")
+        if tg_token: st.session_state.telegram_token  = tg_token
+        if tg_chat:  st.session_state.telegram_chat_id = tg_chat
+        tg_ok = bool(st.session_state.telegram_token and st.session_state.telegram_chat_id)
+        tg_col = "#34d399" if tg_ok else "#f87171"
+        tg_lbl = "TELEGRAM ACTIVO" if tg_ok else "Completa token y chat ID"
+        st.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:{tg_col};margin-bottom:6px;">{tg_lbl}</div>', unsafe_allow_html=True)
+        if tg_ok and st.button("Enviar prueba", key="tg_test"):
+            ok = enviar_telegram(st.session_state.telegram_token, st.session_state.telegram_chat_id,
+                "✅ <b>Hector Pattern Detector</b> conectado correctamente!\n\nVas a recibir alertas aqui cuando Score > 80%")
+            if ok:
+                st.success("Mensaje de prueba enviado!")
+            else:
+                st.error("Error al enviar — verificá el token y chat ID")
+
     st.markdown("---")
     # Tracker rapido en sidebar
     wins   = len([t for t in st.session_state.tracker if t["resultado"]=="WIN"])
@@ -636,6 +715,19 @@ with st.sidebar:
     <div><div style='font-family:"Rajdhani",sans-serif;font-size:20px;font-weight:700;color:{col_wr};'>{wr}%</div>
     <div style='font-family:"Share Tech Mono",monospace;font-size:8px;color:#5a7a99;'>WIN%</div></div>
     </div></div>""", unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;letter-spacing:2px;margin-bottom:6px;">TELEGRAM ALERTAS</div>', unsafe_allow_html=True)
+    tg_on = st.checkbox("Enviar alertas a Telegram", value=st.session_state.telegram_on, key="tg_chk")
+    st.session_state.telegram_on = tg_on
+    if tg_on:
+        st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#34d399;">@hpd_alerts_bot ACTIVO</div>', unsafe_allow_html=True)
+        if st.button("Enviar prueba", key="tg_test"):
+            ok = enviar_telegram(st.session_state.telegram_token, st.session_state.telegram_chat_id, "✅ <b>Hector Pattern Detector</b>\nConexion Telegram OK! Las alertas llegaran aqui.")
+            if ok:
+                st.success("Mensaje enviado!")
+            else:
+                st.error("Error al enviar")
 
 # ================================================================
 # HEADER + BARRA DE SESION
@@ -807,39 +899,85 @@ if escanear:
         st.session_state.confirmadas = set()
         st.session_state.ia_analisis = ""
 
-        # Alerta sonora si hay señal con Score > 80
+        # Alerta sonora + Telegram si hay señal con Score > 80
         alertas_fuertes = [a for a in alertas if a["conf"] >= 80]
         if alertas_fuertes:
             mejor = alertas_fuertes[0]
             alerta_key = f"{mejor['activo']}_{mejor['hora']}"
             if alerta_key != st.session_state.get("ultima_alerta_sonido",""):
                 st.session_state.ultima_alerta_sonido = alerta_key
-                # Audio embebido HTML — beep de alerta
+
+                # ── TELEGRAM ──
+                if st.session_state.get("telegram_on") and st.session_state.get("telegram_token"):
+                    ic_tg   = "🟢" if mejor["dir"] == "ALCISTA" else "🔴"
+                    acc_tg  = "CALL ▲" if mejor["dir"] == "ALCISTA" else "PUT ▼"
+                    n_al    = len(alertas_fuertes)
+                    # Mensaje principal
+                    msg = (
+                        f"{ic_tg} <b>ALERTA — {mejor['activo']}</b>\n"
+                        f"━━━━━━━━━━━━━━\n"
+                        f"📊 Direccion: <b>{acc_tg}</b>\n"
+                        f"⏱ Expiracion: {mejor['expiracion']}\n"
+                        f"🎯 Score: {mejor['conf']}% — {mejor['conf_label']}\n"
+                        f"📌 Patrones: {mejor['patrones_nombres']}\n"
+                        f"💰 Precio: ${mejor['precio']:.2f}\n"
+                        f"🕐 Hora: {mejor['hora']} UTC\n"
+                        f"━━━━━━━━━━━━━━\n"
+                    )
+                    if n_al > 1:
+                        msg += f"<i>+{n_al-1} alertas mas en el radar</i>\n"
+                    # Capital info
+                    capital = st.session_state.get("capital_dia", 0)
+                    if capital > 0:
+                        msg += f"\n💵 Entrada 2%: <b>${capital*0.02:.2f}</b>"
+                    msg += "\n\n<i>Hector Pattern Detector v5</i>"
+                    enviar_telegram(st.session_state.telegram_token, st.session_state.telegram_chat_id, msg)
+
+                    # Si hay mas de 1 alerta fuerte, mandar resumen
+                    if n_al > 1:
+                        resumen = "📋 <b>RESUMEN DEL SCAN</b>\n━━━━━━━━━━━━━━\n"
+                        for a in alertas_fuertes[:4]:
+                            ic2 = "🟢" if a["dir"]=="ALCISTA" else "🔴"
+                            resumen += f"{ic2} {a['activo']} — {a['conf']}% — {'CALL' if a['dir']=='ALCISTA' else 'PUT'} {a['expiracion']}\n"
+                        enviar_telegram(st.session_state.telegram_token, st.session_state.telegram_chat_id, resumen)
+
+                # ── SONIDO ──
                 audio_html = """
-                <audio autoplay>
-                  <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAA
-EAAQARAAIAIgACABAAZGF0YVAGAACBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGB
-gcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwf//////////AQIDBAUGB
-wgJCgsM" type="audio/wav">
-                </audio>
                 <script>
                 try {
                   var ctx = new (window.AudioContext || window.webkitAudioContext)();
-                  var osc = ctx.createOscillator();
-                  var gain = ctx.createGain();
-                  osc.connect(gain);
-                  gain.connect(ctx.destination);
-                  osc.frequency.setValueAtTime(880, ctx.currentTime);
-                  osc.frequency.setValueAtTime(660, ctx.currentTime + 0.15);
-                  osc.frequency.setValueAtTime(880, ctx.currentTime + 0.3);
-                  gain.gain.setValueAtTime(0.3, ctx.currentTime);
-                  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
-                  osc.start(ctx.currentTime);
-                  osc.stop(ctx.currentTime + 0.5);
+                  function beep(freq, start, dur) {
+                    var o = ctx.createOscillator();
+                    var g = ctx.createGain();
+                    o.connect(g); g.connect(ctx.destination);
+                    o.frequency.value = freq;
+                    g.gain.setValueAtTime(0.3, ctx.currentTime+start);
+                    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+start+dur);
+                    o.start(ctx.currentTime+start);
+                    o.stop(ctx.currentTime+start+dur);
+                  }
+                  beep(880, 0, 0.15);
+                  beep(660, 0.2, 0.15);
+                  beep(880, 0.4, 0.25);
                 } catch(e) {}
                 </script>
                 """
                 components_v1.html(audio_html, height=0)
+
+        # Enviar alertas a Telegram si esta configurado
+        if st.session_state.get("telegram_on") and st.session_state.get("telegram_token") and st.session_state.get("telegram_chat_id"):
+            alertas_tg = [a for a in alertas if a["conf"] >= 80]
+            for al in alertas_tg:
+                alerta_key_tg = f"tg_{al['activo']}_{al['hora']}"
+                enviadas = st.session_state.get("tg_enviadas", set())
+                if alerta_key_tg not in enviadas:
+                    capital_tg = st.session_state.get("capital_dia", 467.86)
+                    msg_tg = armar_mensaje_alerta(al, capital_tg)
+                    ok = enviar_telegram(st.session_state.telegram_token, st.session_state.telegram_chat_id, msg_tg)
+                    if ok:
+                        enviadas.add(alerta_key_tg)
+                        st.session_state.tg_enviadas = enviadas
+
         st.rerun()
 
 # ================================================================
