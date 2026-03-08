@@ -812,33 +812,29 @@ with tab_alert:
             # Patrones individuales para SVGs
             patrones_lista = [p.strip() for p in al["patrones_nombres"].split(",")]
 
-            st.markdown(f"""
-            <div class="{cc}" style="{'opacity:0.5;' if conf_i else ''}">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
-                <div>
-                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                    <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:26px;color:{col};">{ic} {al['activo']}</div>
-                    {conf_badge}
-                  </div>
-                  <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#3a5570;">{al['hora']} · ${al['precio']:.2f} · Vol:{al['vol_est']}</div>
-                </div>
-                <div style="text-align:right;">
-                  <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:20px;color:{col};">{acc}</div>
-                  <span class="exp-badge">EXPIRACION: {al['expiracion']}</span>
-                </div>
-              </div>
-              <div style="font-size:12px;color:#4a6080;margin-bottom:8px;">Patrones: <b style="color:{col};">{al['patrones_nombres']}</b></div>
-              <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-                <div style="flex:1;height:8px;background:#bdd4e8;border-radius:4px;overflow:hidden;">
-                  <div style="height:100%;width:{al['conf']}%;background:{col};border-radius:4px;"></div>
-                </div>
-                <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:{col};font-weight:700;">{al['conf']}%</span>
-              </div>
-              <div style="display:flex;align-items:center;gap:10px;padding:10px;background:{'#e8f9f0' if aprobados>=3 else ('#fffbf0' if aprobados==2 else '#fff0f0')};border-radius:8px;margin-bottom:8px;">
-                <span style="font-family:'Rajdhani',sans-serif;font-size:20px;font-weight:700;color:{sem_col};">{semaforo}</span>
-                <span style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#4a6080;">{aprobados}/4 checks OK</span>
-              </div>
-            </div>""", unsafe_allow_html=True)
+            # Build card avoiding single-quote conflicts in f-strings
+            opacidad  = "opacity:0.5;" if conf_i else ""
+            sem_bg    = "#e8f9f0" if aprobados >= 3 else ("#fffbf0" if aprobados == 2 else "#fff0f0")
+            precio_s  = f"{al['precio']:.2f}"
+            card_html = (
+                f'<div class="{cc}" style="{opacidad}">' +
+                f'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">' +
+                f'<div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+                f'<div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:26px;color:{col};">{ic} {al["activo"]}</div>' +
+                conf_badge +
+                f'</div><div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#3a5570;">{al["hora"]} &middot; ${precio_s} &middot; Vol:{al["vol_est"]}</div></div>' +
+                f'<div style="text-align:right;"><div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:20px;color:{col};">{acc}</div>' +
+                f'<span class="exp-badge">EXPIRACION: {al["expiracion"]}</span></div></div>' +
+                f'<div style="font-size:12px;color:#4a6080;margin-bottom:8px;">Patrones: <b style="color:{col};">{al["patrones_nombres"]}</b></div>' +
+                f'<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">' +
+                f'<div style="flex:1;height:8px;background:#bdd4e8;border-radius:4px;overflow:hidden;">' +
+                f'<div style="height:100%;width:{al["conf"]}%;background:{col};border-radius:4px;"></div></div>' +
+                f'<span style="font-family:Share Tech Mono,monospace;font-size:11px;color:{col};font-weight:700;">{al["conf"]}%</span></div>' +
+                f'<div style="display:flex;align-items:center;gap:10px;padding:10px;background:{sem_bg};border-radius:8px;margin-bottom:8px;">' +
+                f'<span style="font-family:Rajdhani,sans-serif;font-size:20px;font-weight:700;color:{sem_col};">{semaforo}</span>' +
+                f'<span style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a6080;">{aprobados}/4 checks OK</span></div></div>'
+            )
+            st.markdown(card_html, unsafe_allow_html=True)
 
             # Checklist de confirmacion expandible
             with st.expander(f"Ver checklist de confirmacion — {al['activo']}"):
