@@ -544,7 +544,7 @@ with st.sidebar:
                            placeholder="sk-ant-api03-...", type="password", label_visibility="collapsed")
     if api_in: st.session_state.api_key = api_in
     ia_ok_sb = st.session_state.api_key.startswith("sk-ant-")
-    st.markdown(f'<div style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:{"#34d399" if ia_ok else "#475569"};margin-bottom:8px;">{"IA ACTIVA" if ia_ok_sb else "Sin clave"}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:{"#34d399" if ia_ok_sb else "#475569"};margin-bottom:8px;">{"IA ACTIVA" if ia_ok_sb else "Sin clave"}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown('<div style="font-family:\'Share Tech Mono\',monospace;font-size:9px;color:#5a7a99;letter-spacing:2px;margin-bottom:8px;">ACTIVOS</div>', unsafe_allow_html=True)
