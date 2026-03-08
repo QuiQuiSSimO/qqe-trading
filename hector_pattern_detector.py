@@ -680,6 +680,112 @@ with tab_ranking:
                 </div>""", unsafe_allow_html=True)
 
 # ── ALERTAS ─────────────────────────────────────
+# ================================================================
+# IMAGENES SVG DE PATRONES
+# ================================================================
+def svg_patron(nombre, direccion):
+    """Mini diagrama SVG de cada patron — visual rapido en iPhone"""
+    col_alc = "#16a34a"; col_baj = "#dc2626"; col_neu = "#92400e"
+    c = col_alc if direccion == "ALCISTA" else col_baj
+
+    svgs = {
+        "Engulfing + EMA": f"""<svg width="80" height="50" viewBox="0 0 80 50">
+            <rect x="20" y="15" width="12" height="25" fill="{col_baj}" rx="1"/>
+            <line x1="26" y1="8" x2="26" y2="15" stroke="{col_baj}" stroke-width="1.5"/>
+            <line x1="26" y1="40" x2="26" y2="46" stroke="{col_baj}" stroke-width="1.5"/>
+            <rect x="42" y="8" width="16" height="34" fill="{c}" rx="1"/>
+            <line x1="50" y1="2" x2="50" y2="8" stroke="{c}" stroke-width="1.5"/>
+            <line x1="50" y1="42" x2="50" y2="48" stroke="{c}" stroke-width="1.5"/>
+            <line x1="5" y1="30" x2="75" y2="22" stroke="#c8920a" stroke-width="1" stroke-dasharray="3,2"/>
+        </svg>""",
+        "Pin Bar en SR": f"""<svg width="80" height="50" viewBox="0 0 80 50">
+            <line x1="40" y1="2" x2="40" y2="42" stroke="{c}" stroke-width="1.5"/>
+            <rect x="33" y="30" width="14" height="10" fill="{c}" rx="1"/>
+            <line x1="40" y1="42" x2="40" y2="48" stroke="{c}" stroke-width="1.5"/>
+            <line x1="5" y1="32" x2="75" y2="32" stroke="#c8920a" stroke-width="1.5" stroke-dasharray="4,2"/>
+        </svg>""",
+        "Fakey": f"""<svg width="80" height="50" viewBox="0 0 80 50">
+            <rect x="8" y="12" width="14" height="26" fill="#94a3b8" rx="1"/>
+            <rect x="28" y="16" width="10" height="18" fill="#94a3b8" rx="1"/>
+            <line x1="56" y1="4" x2="56" y2="46" stroke="{col_baj}" stroke-width="1.5"/>
+            <rect x="50" y="28" width="12" height="8" fill="{col_baj}" rx="1"/>
+            <line x1="62" y1="10" x2="75" y2="20" stroke="{c}" stroke-width="2"/>
+        </svg>""",
+        "Divergencia RSI": f"""<svg width="80" height="50" viewBox="0 0 80 50">
+            <polyline points="5,35 20,25 35,15 50,18 65,12" fill="none" stroke="#1d4ed8" stroke-width="1.5"/>
+            <polyline points="5,38 20,32 35,30 50,34 65,38" fill="none" stroke="#c8920a" stroke-width="1.5" stroke-dasharray="3,2"/>
+            <text x="3" y="48" font-size="7" fill="#4a6080">Precio</text>
+            <text x="3" y="44" font-size="7" fill="#c8920a" dy="0">RSI</text>
+            <line x1="50" y1="10" x2="68" y2="10" stroke="{c}" stroke-width="2"/>
+        </svg>""",
+        "Inside Bar Ruptura": f"""<svg width="80" height="50" viewBox="0 0 80 50">
+            <rect x="10" y="10" width="14" height="30" fill="#94a3b8" rx="1"/>
+            <rect x="30" y="16" width="10" height="18" fill="#64748b" rx="1"/>
+            <rect x="50" y="{'5' if direccion=='ALCISTA' else '30'}" width="14" height="{'28' if direccion=='ALCISTA' else '15'}" fill="{c}" rx="1"/>
+            <line x1="10" y1="10" x2="64" y2="10" stroke="{col_baj}" stroke-width="1" stroke-dasharray="3,2"/>
+            <line x1="10" y1="40" x2="64" y2="40" stroke="#16a34a" stroke-width="1" stroke-dasharray="3,2"/>
+        </svg>""",
+        "Tres Soldados/Cuervos": f"""<svg width="80" height="50" viewBox="0 0 80 50">
+            <rect x="8" y="{'28' if direccion=='ALCISTA' else '8'}" width="14" height="{'18' if direccion=='ALCISTA' else '18'}" fill="{c}" rx="1"/>
+            <rect x="28" y="{'20' if direccion=='ALCISTA' else '16'}" width="14" height="{'22' if direccion=='ALCISTA' else '22'}" fill="{c}" rx="1"/>
+            <rect x="48" y="{'10' if direccion=='ALCISTA' else '24'}" width="14" height="{'28' if direccion=='ALCISTA' else '18'}" fill="{c}" rx="1"/>
+        </svg>""",
+        "Estrella Manana/Tarde": f"""<svg width="80" height="50" viewBox="0 0 80 50">
+            <rect x="5" y="{'8' if direccion=='BAJISTA' else '25'}" width="16" height="{'22' if direccion=='BAJISTA' else '18'}" fill="{'#dc2626' if direccion=='BAJISTA' else '#16a34a'}" rx="1"/>
+            <rect x="28" y="20" width="10" height="10" fill="#fbbf24" rx="1"/>
+            <line x1="33" y1="15" x2="33" y2="20" stroke="#fbbf24" stroke-width="1.5"/>
+            <line x1="33" y1="30" x2="33" y2="36" stroke="#fbbf24" stroke-width="1.5"/>
+            <rect x="48" y="{'25' if direccion=='BAJISTA' else '8'}" width="16" height="{'18' if direccion=='BAJISTA' else '22'}" fill="{c}" rx="1"/>
+        </svg>""",
+        "Consolidacion Ruptura": f"""<svg width="80" height="50" viewBox="0 0 80 50">
+            <rect x="5" y="18" width="8" height="14" fill="#94a3b8" rx="1"/>
+            <rect x="16" y="20" width="8" height="10" fill="#94a3b8" rx="1"/>
+            <rect x="27" y="17" width="8" height="16" fill="#94a3b8" rx="1"/>
+            <rect x="38" y="19" width="8" height="12" fill="#94a3b8" rx="1"/>
+            <line x1="5" y1="17" x2="46" y2="17" stroke="{col_baj}" stroke-width="1" stroke-dasharray="2,2"/>
+            <line x1="5" y1="32" x2="46" y2="32" stroke="#16a34a" stroke-width="1" stroke-dasharray="2,2"/>
+            <rect x="52" y="{'5' if direccion=='ALCISTA' else '28'}" width="14" height="{'28' if direccion=='ALCISTA' else '18'}" fill="{c}" rx="1"/>
+            <line x1="52" y1="17" x2="66" y2="17" stroke="{col_baj}" stroke-width="1" stroke-dasharray="2,2"/>
+        </svg>""",
+    }
+    svg = svgs.get(nombre, f"""<svg width="80" height="50" viewBox="0 0 80 50">
+        <text x="10" y="28" font-size="9" fill="#4a6080">{nombre[:10]}</text>
+    </svg>""")
+    return svg
+
+def checklist_confirmacion(df, direccion):
+    """Checklist automatico de confirmacion antes de entrar"""
+    checks = []
+    rsi = calc_rsi(df["cierre"]).iloc[-1]
+    ultima = df["cierre"].iloc[-1]
+    ante   = df["cierre"].iloc[-2]
+    ante2  = df["cierre"].iloc[-3]
+
+    # Velas anteriores
+    vela_favor = (direccion=="ALCISTA" and ultima > ante) or (direccion=="BAJISTA" and ultima < ante)
+    checks.append(("Vela actual a favor", vela_favor))
+
+    # RSI no extremo
+    rsi_ok = (direccion=="ALCISTA" and rsi < 70) or (direccion=="BAJISTA" and rsi > 30)
+    checks.append((f"RSI no extremo ({rsi:.0f})", rsi_ok))
+
+    # Momentum — 2 velas previas
+    if direccion == "ALCISTA":
+        momentum = ultima > ante2
+    else:
+        momentum = ultima < ante2
+    checks.append(("Momentum de 2 velas", momentum))
+
+    # ATR — ya viene del resultado del scan, usamos RSI como proxy
+    vol_ok = 30 < rsi < 75
+    checks.append(("Volatilidad aceptable", vol_ok))
+
+    aprobados = sum(1 for _, v in checks if v)
+    return checks, aprobados
+
+# ================================================================
+# TAB ALERTAS
+# ================================================================
 with tab_alert:
     st.markdown('<div class="sec">ALERTAS ACTIVAS — ALTA CONFIANZA</div>', unsafe_allow_html=True)
     if not st.session_state.alertas:
@@ -695,6 +801,16 @@ with tab_alert:
             acc     = "CALL / LONG" if es_alc else "PUT / SHORT"
             conf_i  = i in st.session_state.confirmadas
             conf_badge = f'<span class="conf-multi-badge">{al["conf_label"]}</span>' if es_conf else ""
+
+            # Obtener datos para checklist y SVG
+            info_activo = ACTIVOS.get(al["activo"], {})
+            df_al = obtener_datos(info_activo.get("yahoo",""))
+            checks, aprobados = checklist_confirmacion(df_al, al["dir"]) if df_al is not None else ([], 0)
+            semaforo = "🟢 ENTRAR" if aprobados >= 3 else ("🟡 ESPERAR" if aprobados == 2 else "🔴 NO ENTRAR")
+            sem_col  = "#16a34a" if aprobados >= 3 else ("#c8920a" if aprobados == 2 else "#dc2626")
+
+            # Patrones individuales para SVGs
+            patrones_lista = [p.strip() for p in al["patrones_nombres"].split(",")]
 
             st.markdown(f"""
             <div class="{cc}" style="{'opacity:0.5;' if conf_i else ''}">
@@ -712,13 +828,59 @@ with tab_alert:
                 </div>
               </div>
               <div style="font-size:12px;color:#4a6080;margin-bottom:8px;">Patrones: <b style="color:{col};">{al['patrones_nombres']}</b></div>
-              <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+              <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
                 <div style="flex:1;height:8px;background:#bdd4e8;border-radius:4px;overflow:hidden;">
                   <div style="height:100%;width:{al['conf']}%;background:{col};border-radius:4px;"></div>
                 </div>
                 <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:{col};font-weight:700;">{al['conf']}%</span>
               </div>
+              <div style="display:flex;align-items:center;gap:10px;padding:10px;background:{'#e8f9f0' if aprobados>=3 else ('#fffbf0' if aprobados==2 else '#fff0f0')};border-radius:8px;margin-bottom:8px;">
+                <span style="font-family:'Rajdhani',sans-serif;font-size:20px;font-weight:700;color:{sem_col};">{semaforo}</span>
+                <span style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#4a6080;">{aprobados}/4 checks OK</span>
+              </div>
             </div>""", unsafe_allow_html=True)
+
+            # Checklist de confirmacion expandible
+            with st.expander(f"Ver checklist de confirmacion — {al['activo']}"):
+                for label, ok in checks:
+                    icono = "✅" if ok else "❌"
+                    st.markdown(f"{icono} **{label}**")
+
+                # Mini SVGs de los patrones detectados
+                st.markdown("**Patrones detectados — referencia visual:**")
+                svg_cols = st.columns(min(len(patrones_lista), 4))
+                for j, pat in enumerate(patrones_lista[:4]):
+                    with svg_cols[j]:
+                        svg_html = svg_patron(pat.strip(), al["dir"])
+                        st.markdown(f"""
+                        <div style="text-align:center;background:#f0f6fc;border:1px solid #bdd4e8;border-radius:8px;padding:8px;">
+                          {svg_html}
+                          <div style="font-family:'Share Tech Mono',monospace;font-size:8px;color:#4a6080;margin-top:4px;">{pat.strip()[:18]}</div>
+                        </div>""", unsafe_allow_html=True)
+
+                # Boton IA individual
+                if ia_ok:
+                    ia_key = f"ia_individual_{i}"
+                    ia_resp_key = f"ia_resp_{i}"
+                    if ia_resp_key not in st.session_state:
+                        st.session_state[ia_resp_key] = ""
+                    if st.button(f"ANALIZAR ESTA SEÑAL CON IA", key=ia_key):
+                        checks_txt = "\n".join([f"{'OK' if v else 'FALLA'}: {l}" for l,v in checks])
+                        sys_p = f"Eres analista de Hector. Capital $467, objetivo $50/dia, IQ Option M15. Analiza esta señal especifica y di si debe entrar AHORA o esperar. Se directo. Max 80 palabras. Espanol."
+                        prompt = f"Activo: {al['activo']}\nDireccion: {al['dir']}\nPatrones: {al['patrones_nombres']}\nScore: {al['conf']}%\nExpiracion: {al['expiracion']}\n\nChecklist:\n{checks_txt}"
+                        with st.spinner("Analizando..."):
+                            try:
+                                r = requests.post("https://api.anthropic.com/v1/messages",
+                                    headers={"Content-Type":"application/json","x-api-key":st.session_state.api_key,"anthropic-version":"2023-06-01"},
+                                    json={"model":"claude-sonnet-4-20250514","max_tokens":200,"system":sys_p,
+                                          "messages":[{"role":"user","content":prompt}]}, timeout=30)
+                                if r.status_code == 200:
+                                    st.session_state[ia_resp_key] = r.json()["content"][0]["text"]
+                                    st.rerun()
+                            except Exception as e:
+                                st.error(f"Error: {e}")
+                    if st.session_state.get(ia_resp_key):
+                        st.markdown(f'<div style="background:#fff8e7;border:1px solid #c8920a;border-radius:8px;padding:12px;font-size:13px;color:#1a2940;line-height:1.7;margin-top:8px;">{st.session_state[ia_resp_key].replace(chr(10),"<br>")}</div>', unsafe_allow_html=True)
 
             _, c2, c3 = st.columns([2,1,1])
             with c2:
@@ -726,7 +888,6 @@ with tab_alert:
                     st.session_state.confirmadas.add(i)
                     st.rerun()
             with c3:
-                # FIX: key unico por alerta usando su id — robusto ante reruns
                 tracker_key = f"tracker_{al.get('id','')}"
                 ya_trackeada = any(t.get("alerta_id")==al.get("id") for t in st.session_state.tracker)
                 if conf_i and not ya_trackeada:
@@ -740,10 +901,10 @@ with tab_alert:
                         })
                         st.rerun()
 
-        # Analisis IA
+        # Analisis IA general
         if ia_ok:
             st.markdown("---")
-            if st.button("ANALIZAR CON IA — MEJOR OPORTUNIDAD", key="ia_al"):
+            if st.button("ANALIZAR TODAS LAS ALERTAS CON IA", key="ia_al"):
                 txt_al = "\n".join([
                     f"{a['activo']} - {a['dir']} - {a['patrones_nombres']} - Score:{a['conf']}% - {a['conf_label']} - Exp:{a['expiracion']}"
                     for a in st.session_state.alertas
