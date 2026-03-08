@@ -2,17 +2,16 @@
 # Sistema Profesional de Reconocimiento de Patrones
 # by Hector Trading — IQ Option M15
 #
-# v5 — Mejoras por pedido de Hector:
-#   - Gestion de Capital y Riesgo (pestaña CAPITAL)
-#   - Stop Loss diario automatico con bloqueo de radar
-#   - Auto-Refresh configurable (1/5/15 min)
-#   - Selector de horario de operacion
-#   - Alertas sonoras cuando Score > 80%
-#   - ATR extremo — aviso de volatilidad peligrosa
-#   - Soportes y Resistencias dinamicos (ultimos 100 periodos)
-#   - Score de confluencia aumenta si patron ocurre cerca de SR
+# v4 — Correcciones y mejoras autonomas:
+#   - MACD integrado como confirmacion de tendencia
+#   - calcular_score_activo() simplificado, sin desincronizacion
+#   - Historial sin duplicados (deduplicacion por activo+hora)
+#   - Confluencia solo cuenta patrones en la MISMA direccion
+#   - Expiracion de confluencia = la mayor de los patrones involucrados
+#   - Tracker WIN/LOSS robusto con key unico por alerta
+#   - Indicador de sesion activa en header (Londres / Nueva York)
 #
-# INSTALACION: pip install streamlit requests pandas numpy yfinance streamlit-autorefresh
+# INSTALACION: pip install streamlit requests pandas numpy yfinance
 # EJECUCION:   streamlit run hector_pattern_detector.py
 
 import streamlit as st
@@ -20,8 +19,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timezone, date
 import requests
-import streamlit.components.v1 as components_v1
 import base64
+import streamlit.components.v1 as components_v1
 try:
     from streamlit_autorefresh import st_autorefresh
     AUTOREFRESH_OK = True
@@ -32,7 +31,7 @@ st.set_page_config(
     page_title="Hector Pattern Detector",
     page_icon="🔍",
     layout="wide",
-    initial_sidebar_state="collapsed"  # collapsed por defecto en iPhone
+    initial_sidebar_state="collapsed"
 )
 
 # ================================================================
@@ -121,100 +120,24 @@ html, body, .stApp { background:#e8f0f7 !important; }
 .scan-dot { width:8px; height:8px; border-radius:50%; animation:blink 1s infinite; display:inline-block; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
-/* ── BOTONES GLOBALES ── */
+@media (max-width:480px) {
+    .kpi-value { font-size:22px; }
+    .alert-card,.confluencia-card { padding:14px; }
+    .asset-row { flex-direction:column; align-items:flex-start; }
+    .rank-card { flex-direction:column; }
+}
+
 .stButton>button {
     background:#c8920a !important; color:#0f2035 !important;
-    border:none !important; border-radius:12px !important;
+    border:none !important; border-radius:8px !important;
     font-family:'Share Tech Mono',monospace !important;
-    font-size:13px !important; letter-spacing:1px !important; font-weight:700 !important;
-    padding:14px 20px !important; min-height:48px !important;
-    width:100% !important; touch-action:manipulation !important;
+    font-size:11px !important; letter-spacing:1px !important; font-weight:700 !important;
 }
-.stCheckbox label { color:#4a6080 !important; font-family:'Share Tech Mono',monospace !important; font-size:13px !important; }
-.stRadio label { color:#4a6080 !important; font-family:'Share Tech Mono',monospace !important; font-size:13px !important; }
-.stSelectbox label { color:#4a6080 !important; font-family:'Share Tech Mono',monospace !important; font-size:12px !important; }
+.stCheckbox label { color:#4a6080 !important; font-family:'Share Tech Mono',monospace !important; font-size:11px !important; }
 
 ::-webkit-scrollbar { width:4px; }
 ::-webkit-scrollbar-track { background:#ddeaf5; }
 ::-webkit-scrollbar-thumb { background:#7aaac8; border-radius:2px; }
-
-/* ── IPHONE / MOBILE OPTIMIZATION ── */
-@media (max-width:768px) {
-    /* Layout base */
-    html, body, .stApp { font-size:16px !important; }
-    [data-testid="stSidebar"] { display:none !important; }
-
-    /* Header compacto */
-    .hector-brand { padding:12px 10px !important; margin-bottom:8px !important; }
-    .hector-brand div:first-child { font-size:8px !important; }
-    .hector-brand div:nth-child(2) { font-size:20px !important; letter-spacing:2px !important; }
-    .hector-brand div:nth-child(3) { font-size:8px !important; }
-
-    /* Sesion bar */
-    .sesion-bar { padding:6px 10px !important; margin-bottom:8px !important; }
-
-    /* KPIs — 2 columnas en mobile */
-    .kpi { padding:10px 8px !important; }
-    .kpi-value { font-size:24px !important; }
-    .kpi-label { font-size:8px !important; letter-spacing:1px !important; }
-
-    /* Tabs — mas grandes para touch */
-    .stTabs [data-baseweb="tab"] {
-        font-size:9px !important; padding:12px 8px !important;
-        letter-spacing:0 !important;
-    }
-
-    /* Cards */
-    .alert-card, .confluencia-card { padding:12px !important; margin-bottom:10px !important; }
-    .asset-row { flex-direction:column !important; align-items:flex-start !important; padding:12px !important; }
-    .rank-card { flex-direction:row !important; padding:12px !important; }
-    .rank-num { font-size:24px !important; min-width:28px !important; }
-    .hist-item { flex-direction:column !important; align-items:flex-start !important; }
-
-    /* Botones touch-friendly */
-    .stButton>button {
-        font-size:15px !important; padding:16px 20px !important;
-        min-height:52px !important; border-radius:14px !important;
-        margin-bottom:6px !important;
-    }
-
-    /* Texto mas legible */
-    .sec { font-size:9px !important; letter-spacing:1px !important; }
-    .exp-badge { font-size:10px !important; padding:5px 12px !important; }
-    .conf-multi-badge { font-size:10px !important; padding:5px 12px !important; }
-
-    /* Inputs mas grandes */
-    input, select, textarea { font-size:16px !important; min-height:44px !important; }
-
-    /* Ocultar elementos no esenciales en mobile */
-    .rank-num { display:none !important; }
-}
-
-/* iPhone SE y pantallas muy pequenas */
-@media (max-width:380px) {
-    .kpi-value { font-size:20px !important; }
-    .stTabs [data-baseweb="tab"] { font-size:8px !important; padding:10px 5px !important; }
-}
-
-/* iPhone landscape */
-@media (max-width:768px) and (orientation:landscape) {
-    .hector-brand { padding:6px !important; }
-    .kpi { padding:6px !important; }
-    .kpi-value { font-size:18px !important; }
-}
-
-/* Botones de alerta — extra grandes en mobile */
-@media (max-width:768px) {
-    .btn-iphone {
-        display:block; width:100%; padding:18px;
-        font-size:16px; font-weight:700; border-radius:14px;
-        text-align:center; margin:6px 0; cursor:pointer;
-        touch-action:manipulation; -webkit-tap-highlight-color:transparent;
-        border:none; font-family:'Share Tech Mono',monospace;
-    }
-    .btn-call { background:#16a34a; color:white; }
-    .btn-put  { background:#dc2626; color:white; }
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -223,52 +146,12 @@ html, body, .stApp { background:#e8f0f7 !important; }
 # TELEGRAM
 # ================================================================
 def enviar_telegram(token, chat_id, mensaje):
-    """Envia mensaje a Telegram. Retorna True si OK."""
     try:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
-        r = requests.post(url, json={
-            "chat_id": chat_id,
-            "text": mensaje,
-            "parse_mode": "HTML"
-        }, timeout=10)
+        r = requests.post(url, json={"chat_id": chat_id, "text": mensaje, "parse_mode": "HTML"}, timeout=10)
         return r.status_code == 200
     except:
         return False
-
-
-# ================================================================
-# TELEGRAM
-# ================================================================
-def enviar_telegram(token, chat_id, mensaje):
-    """Envia mensaje a Telegram"""
-    try:
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        r = requests.post(url, json={
-            "chat_id": chat_id,
-            "text": mensaje,
-            "parse_mode": "HTML"
-        }, timeout=10)
-        return r.status_code == 200
-    except:
-        return False
-
-def armar_mensaje_alerta(alerta, capital=467.86):
-    """Arma el mensaje de Telegram para una alerta"""
-    ic  = "📈" if alerta["dir"] == "ALCISTA" else "📉"
-    acc = "CALL / LONG" if alerta["dir"] == "ALCISTA" else "PUT / SHORT"
-    entrada_2pct = capital * 0.02
-    msg = (
-        f"🔔 <b>ALERTA HECTOR PATTERN DETECTOR</b>\n\n"
-        f"{ic} <b>{alerta['activo']}</b> — {acc}\n"
-        f"📊 Score: <b>{alerta['conf']}%</b> — {alerta['conf_label']}\n"
-        f"🕯 Patrones: {alerta['patrones_nombres']}\n"
-        f"⏱ Expiracion: {alerta['expiracion']}\n"
-        f"💰 Precio: ${alerta['precio']:.2f}\n"
-        f"📥 Entrada sugerida (2%): <b>${entrada_2pct:.2f}</b>\n"
-        f"🕐 Hora: {alerta['hora']} UTC\n\n"
-        f"✅ Confirma en el dashboard antes de entrar"
-    )
-    return msg
 
 # ================================================================
 # SESSION STATE
@@ -286,14 +169,11 @@ defaults = {
     "stop_loss_pct": 10,
     "perdida_dia": 0.0,
     "radar_bloqueado": False,
-    "autorefresh_on": False,
-    "autorefresh_min": 5,
-    "hora_inicio_op": "07:00",
-    "hora_fin_op": "16:00",
+    "telegram_token": "",
+    "telegram_chat_id": "",
+    "telegram_on": False,
+    "tg_enviadas": set(),
     "ultima_alerta_sonido": "",
-    "telegram_token": "8310236833:AAGfspKyA4_ombrw_lZvP6ic-KvTfpDIc4o",
-    "telegram_chat_id": "1495197167",
-    "telegram_on": True,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -385,41 +265,9 @@ def analizar_volatilidad(df):
     act  = atr.iloc[-1]
     prom = atr.iloc[-50:].mean()
     pct  = (act / prom) * 100 if prom > 0 else 100
-    if   pct >= 180: return "EXTREMA", pct, "⚠️ Volatilidad extrema — PELIGRO",       "#f97316","atr-flat"
-    elif pct >= 90:  return "FUERTE",  pct, "Volatilidad optima — OPERAR",             "#34d399","atr-ok"
-    elif pct >= 60:  return "NORMAL",  pct, "Volatilidad aceptable — Con precaucion",  "#fbbf24","atr-low"
-    else:            return "PLANO",   pct, "Mercado sin fuerza — NO OPERAR",          "#f87171","atr-flat"
-
-def calcular_soportes_resistencias(df, periodos=100):
-    """Calcula niveles S/R basados en pivots de los ultimos N periodos"""
-    datos = df.tail(periodos)
-    precios = datos["cierre"].values
-    maximos = datos["maximo"].values
-    minimos = datos["minimo"].values
-
-    # Pivots: puntos donde el precio cambia de direccion
-    resistencias = []
-    soportes     = []
-    for i in range(2, len(maximos)-2):
-        if maximos[i] > maximos[i-1] and maximos[i] > maximos[i-2] and maximos[i] > maximos[i+1] and maximos[i] > maximos[i+2]:
-            resistencias.append(maximos[i])
-        if minimos[i] < minimos[i-1] and minimos[i] < minimos[i-2] and minimos[i] < minimos[i+1] and minimos[i] < minimos[i+2]:
-            soportes.append(minimos[i])
-
-    # Tomar los 3 mas recientes/relevantes
-    resistencias = sorted(set([round(r, 4) for r in resistencias]))[-3:]
-    soportes     = sorted(set([round(s, 4) for s in soportes]))[:3]
-    return soportes, resistencias
-
-def patron_cerca_sr(precio_actual, soportes, resistencias, tolerancia_pct=0.003):
-    """Devuelve True y tipo si el patron ocurre cerca de un nivel S/R"""
-    for s in soportes:
-        if abs(precio_actual - s) / s < tolerancia_pct:
-            return True, "SOPORTE"
-    for r in resistencias:
-        if abs(precio_actual - r) / r < tolerancia_pct:
-            return True, "RESISTENCIA"
-    return False, ""
+    if   pct >= 90: return "FUERTE", pct, "Volatilidad optima — OPERAR",           "#34d399","atr-ok"
+    elif pct >= 60: return "NORMAL", pct, "Volatilidad aceptable — Con precaucion", "#fbbf24","atr-low"
+    else:           return "PLANO",  pct, "Mercado sin fuerza — NO OPERAR",         "#f87171","atr-flat"
 
 def filtro_tendencia(df):
     """Tendencia usando EMA200 + confirmacion MACD"""
@@ -575,14 +423,14 @@ def calcular_confluencia(patrones_alineados):
 
     return score, label, max_exp, dir_dom
 
-def calcular_score_activo(patrones_validos, vol_est, tendencia, sr_bonus=0):
-    """v5: incluye bonus por patron cerca de S/R"""
+def calcular_score_activo(patrones_validos, vol_est, tendencia):
+    """FIX v4: recibe parametros directos, sin riesgo de desincronizacion."""
     pat_alineados = [p for p in patrones_validos if p.get("alineado")]
     if not pat_alineados: return 0
     score, _, _, _ = calcular_confluencia(pat_alineados)
-    vol_bonus  = {"FUERTE":20,"NORMAL":10,"PLANO":0,"EXTREMA":0}.get(vol_est, 0)
+    vol_bonus  = {"FUERTE":20,"NORMAL":10,"PLANO":0}.get(vol_est, 0)
     tend_bonus = 0 if "LATERAL" in tendencia else 10
-    return score + vol_bonus + tend_bonus + sr_bonus
+    return score + vol_bonus + tend_bonus
 
 # ================================================================
 # SIDEBAR
@@ -598,8 +446,8 @@ with st.sidebar:
     api_in = st.text_input("Clave API", value=st.session_state.api_key,
                            placeholder="sk-ant-api03-...", type="password", label_visibility="collapsed")
     if api_in: st.session_state.api_key = api_in
-    ia_ok_sb = st.session_state.api_key.startswith("sk-ant-")
-    st.markdown(f'<div style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:{"#34d399" if ia_ok_sb else "#475569"};margin-bottom:8px;">{"IA ACTIVA" if ia_ok_sb else "Sin clave"}</div>', unsafe_allow_html=True)
+    ia_ok = st.session_state.api_key.startswith("sk-ant-")
+    st.markdown(f'<div style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:{"#34d399" if ia_ok else "#475569"};margin-bottom:8px;">{"IA ACTIVA" if ia_ok else "Sin clave"}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown('<div style="font-family:\'Share Tech Mono\',monospace;font-size:9px;color:#5a7a99;letter-spacing:2px;margin-bottom:8px;">ACTIVOS</div>', unsafe_allow_html=True)
@@ -609,93 +457,62 @@ with st.sidebar:
     confianza_min = st.slider("Confianza minima %", 50, 80, 63, 1)
     solo_confluencia = st.checkbox("Solo mostrar confluencias", value=False)
 
-    # ── AUTO-REFRESH ──
-    st.markdown("---")
-    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;letter-spacing:2px;margin-bottom:6px;">AUTO-SCAN</div>', unsafe_allow_html=True)
-    ar_on = st.checkbox("Activar escaneo automatico", value=st.session_state.autorefresh_on, key="ar_chk")
-    st.session_state.autorefresh_on = ar_on
-    if ar_on:
-        ar_min = st.selectbox("Frecuencia", [1, 5, 15], index=[1,5,15].index(st.session_state.autorefresh_min) if st.session_state.autorefresh_min in [1,5,15] else 1, key="ar_sel", format_func=lambda x: f"Cada {x} min")
-        st.session_state.autorefresh_min = ar_min
-        if AUTOREFRESH_OK:
-            st_autorefresh(interval=ar_min * 60 * 1000, key="autoref")
-        else:
-            st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#f87171;">Instalar: pip install streamlit-autorefresh</div>', unsafe_allow_html=True)
-        # Horario de operacion
-        st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;margin-top:6px;margin-bottom:4px;">HORARIO ACTIVO</div>', unsafe_allow_html=True)
-        hi = st.text_input("Desde (HH:MM)", value=st.session_state.hora_inicio_op, key="hi", label_visibility="collapsed", placeholder="09:00")
-        hf = st.text_input("Hasta (HH:MM)", value=st.session_state.hora_fin_op,    key="hf", label_visibility="collapsed", placeholder="16:00")
-        if hi: st.session_state.hora_inicio_op = hi
-        if hf: st.session_state.hora_fin_op    = hf
-
-    # ── CAPITAL Y RIESGO ──
-    st.markdown("---")
-    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;letter-spacing:2px;margin-bottom:6px;">CAPITAL Y RIESGO</div>', unsafe_allow_html=True)
-    capital_in = st.number_input("Capital del dia USD", min_value=10.0, max_value=100000.0,
-        value=float(st.session_state.capital_dia), step=10.0, key="cap_input", label_visibility="collapsed")
-    st.session_state.capital_dia = capital_in
-    sl_pct = st.slider("Stop Loss diario %", 5, 30, int(st.session_state.stop_loss_pct), 1, key="sl_slider")
-    st.session_state.stop_loss_pct = sl_pct
-    entrada_1pct = capital_in * 0.01
-    entrada_2pct = capital_in * 0.02
-    sl_monto     = capital_in * sl_pct / 100
-    perdida = st.session_state.perdida_dia
-    radar_ok = perdida < sl_monto
-    st.session_state.radar_bloqueado = not radar_ok
-    pct_usado = min(100, int(perdida / sl_monto * 100)) if sl_monto > 0 else 0
-    barra_col = "#34d399" if pct_usado < 50 else ("#fbbf24" if pct_usado < 80 else "#f87171")
-    st.markdown(f"""
-    <div style="background:#f0f6fc;border:1px solid #bdd4e8;border-radius:8px;padding:10px;margin-bottom:6px;">
-      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-        <span style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;">ENTRADA 1%</span>
-        <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#1a2940;">${entrada_1pct:.2f}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-        <span style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;">ENTRADA 2%</span>
-        <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8920a;">${entrada_2pct:.2f}</span>
-      </div>
-      <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;margin-bottom:3px;">STOP LOSS: ${sl_monto:.2f} ({sl_pct}%)</div>
-      <div style="height:6px;background:#bdd4e8;border-radius:3px;overflow:hidden;">
-        <div style="height:100%;width:{pct_usado}%;background:{barra_col};border-radius:3px;transition:width 0.3s;"></div>
-      </div>
-      <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:{barra_col};margin-top:3px;">Perdida: ${perdida:.2f} / ${sl_monto:.2f}</div>
-    </div>""", unsafe_allow_html=True)
-    if not radar_ok:
-        st.markdown('<div style="background:#fff0f0;border:2px solid #dc2626;border-radius:8px;padding:8px;text-align:center;font-family:Share Tech Mono,monospace;font-size:10px;color:#dc2626;font-weight:700;">🛑 STOP LOSS ALCANZADO<br>RADAR BLOQUEADO</div>', unsafe_allow_html=True)
-    c_p1, c_p2 = st.columns(2)
-    with c_p1:
-        if st.button(f"+ Perdida", key="add_loss"):
-            st.session_state.perdida_dia += entrada_2pct
-            st.rerun()
-    with c_p2:
-        if st.button("Reset dia", key="reset_perdida"):
-            st.session_state.perdida_dia = 0.0
-            st.session_state.radar_bloqueado = False
-            st.rerun()
-
     # ── TELEGRAM ──
     st.markdown("---")
     st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;letter-spacing:2px;margin-bottom:6px;">NOTIFICACIONES TELEGRAM</div>', unsafe_allow_html=True)
-    tg_on = st.checkbox("Activar alertas Telegram", value=st.session_state.telegram_on, key="tg_chk")
+    tg_on = st.checkbox("Alertas Telegram", value=st.session_state.telegram_on, key="tg_on_chk")
     st.session_state.telegram_on = tg_on
     if tg_on:
-        tg_token = st.text_input("Token del bot", value=st.session_state.telegram_token,
-            placeholder="8310236833:AAG...", type="password", key="tg_token", label_visibility="collapsed")
-        tg_chat  = st.text_input("Chat ID", value=st.session_state.telegram_chat_id,
-            placeholder="1495197167", key="tg_chat", label_visibility="collapsed")
-        if tg_token: st.session_state.telegram_token  = tg_token
-        if tg_chat:  st.session_state.telegram_chat_id = tg_chat
+        tg_tok = st.text_input("Token bot", value=st.session_state.telegram_token, placeholder="8310236833:AAG...", type="password", key="tg_tok_inp", label_visibility="collapsed")
+        tg_cid = st.text_input("Chat ID",   value=st.session_state.telegram_chat_id, placeholder="1495197167", key="tg_cid_inp", label_visibility="collapsed")
+        if tg_tok: st.session_state.telegram_token   = tg_tok
+        if tg_cid: st.session_state.telegram_chat_id = tg_cid
         tg_ok = bool(st.session_state.telegram_token and st.session_state.telegram_chat_id)
-        tg_col = "#34d399" if tg_ok else "#f87171"
-        tg_lbl = "TELEGRAM ACTIVO" if tg_ok else "Completa token y chat ID"
-        st.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:{tg_col};margin-bottom:6px;">{tg_lbl}</div>', unsafe_allow_html=True)
-        if tg_ok and st.button("Enviar prueba", key="tg_test"):
+        st.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:{"#34d399" if tg_ok else "#f87171"};margin-bottom:4px;">{"TELEGRAM ACTIVO ✓" if tg_ok else "Completa token y chat ID"}</div>', unsafe_allow_html=True)
+        if tg_ok and st.button("Enviar prueba", key="tg_prueba_btn"):
             ok = enviar_telegram(st.session_state.telegram_token, st.session_state.telegram_chat_id,
-                "✅ <b>Hector Pattern Detector</b> conectado correctamente!\n\nVas a recibir alertas aqui cuando Score > 80%")
-            if ok:
-                st.success("Mensaje de prueba enviado!")
-            else:
-                st.error("Error al enviar — verificá el token y chat ID")
+                "✅ <b>Hector Pattern Detector v5</b> conectado!\n\nLas alertas con Score mayor a 80% llegaran aqui.")
+            st.success("Enviado!") if ok else st.error("Error al enviar")
+
+    # ── CAPITAL ──
+    st.markdown("---")
+    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;letter-spacing:2px;margin-bottom:6px;">CAPITAL Y RIESGO</div>', unsafe_allow_html=True)
+    cap_val = st.number_input("Capital dia USD", min_value=10.0, max_value=100000.0, value=float(st.session_state.capital_dia), step=10.0, key="cap_sb", label_visibility="collapsed")
+    st.session_state.capital_dia = cap_val
+    sl_val = st.slider("Stop Loss diario %", 5, 30, int(st.session_state.stop_loss_pct), 1, key="sl_sb")
+    st.session_state.stop_loss_pct = sl_val
+    sl_monto = cap_val * sl_val / 100
+    perdida  = st.session_state.perdida_dia
+    pct_used = min(100, int(perdida / sl_monto * 100)) if sl_monto > 0 else 0
+    bar_col  = "#34d399" if pct_used < 50 else ("#fbbf24" if pct_used < 80 else "#f87171")
+    st.markdown(f"""
+    <div style="background:#f0f6fc;border:1px solid #bdd4e8;border-radius:8px;padding:8px;margin-bottom:4px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+        <span style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;">ENTRADA 1%</span>
+        <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:14px;color:#16a34a;">${cap_val*0.01:.2f}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+        <span style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;">ENTRADA 2%</span>
+        <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:14px;color:#c8920a;">${cap_val*0.02:.2f}</span>
+      </div>
+      <div style="height:5px;background:#bdd4e8;border-radius:3px;overflow:hidden;">
+        <div style="height:100%;width:{pct_used}%;background:{bar_col};border-radius:3px;"></div>
+      </div>
+      <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:{bar_col};margin-top:2px;">Perdida: ${perdida:.2f} / ${sl_monto:.2f}</div>
+    </div>""", unsafe_allow_html=True)
+    if perdida >= sl_monto and sl_monto > 0:
+        st.session_state.radar_bloqueado = True
+        st.markdown('<div style="background:#fff0f0;border:2px solid #dc2626;border-radius:6px;padding:6px;text-align:center;font-family:Share Tech Mono,monospace;font-size:10px;color:#dc2626;font-weight:700;">🛑 STOP LOSS — RADAR BLOQUEADO</div>', unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("+ Loss", key="add_loss_sb"):
+            st.session_state.perdida_dia += cap_val * 0.02
+            st.rerun()
+    with c2:
+        if st.button("Reset", key="reset_sb"):
+            st.session_state.perdida_dia = 0.0
+            st.session_state.radar_bloqueado = False
+            st.rerun()
 
     st.markdown("---")
     # Tracker rapido en sidebar
@@ -722,9 +539,9 @@ with st.sidebar:
 st.markdown("""
 <div class="hector-brand">
   <div style='font-family:"Share Tech Mono",monospace;font-size:9px;color:#5a7a99;letter-spacing:3px;margin-bottom:6px;'>SISTEMA PROFESIONAL DE RECONOCIMIENTO DE PATRONES</div>
-  <div style='font-family:"Rajdhani",sans-serif;font-size:26px;font-weight:700;color:#c8920a;letter-spacing:4px;'>HECTOR PATTERN DETECTOR v5</div>
+  <div style='font-family:"Rajdhani",sans-serif;font-size:26px;font-weight:700;color:#c8920a;letter-spacing:4px;'>HECTOR PATTERN DETECTOR</div>
   <div style='font-family:"Share Tech Mono",monospace;font-size:9px;color:#3a5570;margin-top:4px;letter-spacing:2px;'>
-  8 PATRONES · 6 ACTIVOS · M15 · ATR · SR · CAPITAL · AUTO-SCAN · SONIDO
+  8 PATRONES · 6 ACTIVOS · M15 · ATR · MACD · CONFLUENCIA · RANKING · HISTORIAL
   </div>
 </div>""", unsafe_allow_html=True)
 
@@ -740,20 +557,6 @@ st.markdown(f"""
   </div>
   <span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#5a7a99;">{hora_utc}</span>
 </div>""", unsafe_allow_html=True)
-
-# API Key visible en mobile — arriba del boton escanear
-ia_ok = st.session_state.api_key.startswith("sk-ant-")
-if not ia_ok:
-    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#c8920a;margin-bottom:4px;">CLAVE API ANTHROPIC</div>', unsafe_allow_html=True)
-    api_mobile = st.text_input("API Key", value=st.session_state.api_key,
-        placeholder="sk-ant-api03-...", type="password",
-        label_visibility="collapsed", key="api_mobile")
-    if api_mobile:
-        st.session_state.api_key = api_mobile
-        ia_ok = api_mobile.startswith("sk-ant-")
-        st.rerun()
-else:
-    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#16a34a;margin-bottom:6px;">IA ACTIVA</div>', unsafe_allow_html=True)
 
 # Boton escanear
 col_btn, col_est = st.columns([1,3])
@@ -776,206 +579,151 @@ with col_est:
 # ESCANEO
 # ================================================================
 if escanear:
-    # Verificar horario de operacion
-    hora_actual = datetime.now(timezone.utc).strftime("%H:%M")
-    en_horario = True
-    if st.session_state.get("autorefresh_on") and st.session_state.get("hora_inicio_op") and st.session_state.get("hora_fin_op"):
-        hi = st.session_state.hora_inicio_op
-        hf = st.session_state.hora_fin_op
-        en_horario = hi <= hora_actual <= hf
+    todos_res = []; prog = st.progress(0); txt = st.empty()
 
-    if st.session_state.get("radar_bloqueado"):
-        st.error("🛑 RADAR BLOQUEADO — Stop Loss diario alcanzado. Reseteá el contador para continuar.")
-    elif not en_horario:
-        st.warning(f"⏰ Fuera del horario de operacion configurado ({st.session_state.hora_inicio_op} - {st.session_state.hora_fin_op} UTC)")
-    else:
-        todos_res = []; prog = st.progress(0); txt = st.empty()
+    for idx, activo in enumerate(activos_sel):
+        info = ACTIVOS[activo]
+        txt.markdown(f'<div style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:#c8920a;">Escaneando {activo}...</div>', unsafe_allow_html=True)
+        prog.progress((idx+1) / max(len(activos_sel), 1))
 
-        for idx, activo in enumerate(activos_sel):
-            info = ACTIVOS[activo]
-            pct_prog = idx / max(len(activos_sel), 1)
-            prog.progress(pct_prog)
-            txt.markdown(f'<div style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:#c8920a;">⏳ Escaneando {activo}... ({idx+1}/{len(activos_sel)})</div>', unsafe_allow_html=True)
+        df = obtener_datos(info["yahoo"])
+        if df is not None and len(df) > 200:
+            patrones  = ejecutar_patrones(df)
+            tend, tend_col = filtro_tendencia(df)
+            vol_est, vol_pct, vol_msg, vol_col, vol_cls = analizar_volatilidad(df)
+            precio = df["cierre"].iloc[-1]
+            rsi_v  = calc_rsi(df["cierre"]).iloc[-1]
 
-            df = obtener_datos(info["yahoo"])
-            if df is not None and len(df) > 200:
-                patrones  = ejecutar_patrones(df)
-                tend, tend_col = filtro_tendencia(df)
-                vol_est, vol_pct, vol_msg, vol_col, vol_cls = analizar_volatilidad(df)
-                precio = df["cierre"].iloc[-1]
-                rsi_v  = calc_rsi(df["cierre"]).iloc[-1]
-                soportes, resistencias = calcular_soportes_resistencias(df)
-                cerca_sr, tipo_sr = patron_cerca_sr(precio, soportes, resistencias)
-                sr_bonus = 15 if cerca_sr else 0
-                prog.progress((idx+1) / max(len(activos_sel), 1))
-                txt.markdown(f'<div style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:#16a34a;">✓ {activo} analizado</div>', unsafe_allow_html=True)
+            patrones = [p for p in patrones if p["conf"] >= confianza_min]
+            for p in patrones:
+                # Alineacion: consideramos ALCISTA(deb) como alcista para no perder señales
+                es_alc_tend = "ALCISTA" in tend
+                es_baj_tend = "BAJISTA" in tend
+                p["alineado"] = (es_alc_tend and p["dir"]=="ALCISTA") or (es_baj_tend and p["dir"]=="BAJISTA")
+                p["min_exp"]  = PATRONES.get(p["patron"],{}).get("min_exp", 15)
 
-                patrones = [p for p in patrones if p["conf"] >= confianza_min]
-                for p in patrones:
-                    es_alc_tend = "ALCISTA" in tend
-                    es_baj_tend = "BAJISTA" in tend
-                    p["alineado"] = (es_alc_tend and p["dir"]=="ALCISTA") or (es_baj_tend and p["dir"]=="BAJISTA")
-                    p["min_exp"]  = PATRONES.get(p["patron"],{}).get("min_exp", 15)
+            patrones_validos = [] if vol_est == "PLANO" else patrones
+            pat_alineados    = [p for p in patrones_validos if p.get("alineado")]
+            conf_score, conf_label, max_exp, dir_dom = calcular_confluencia(pat_alineados)
+            score = calcular_score_activo(patrones_validos, vol_est, tend)
 
-                patrones_validos = [] if vol_est in ("PLANO","EXTREMA") else patrones
-                pat_alineados    = [p for p in patrones_validos if p.get("alineado")]
-                conf_score, conf_label, max_exp, dir_dom = calcular_confluencia(pat_alineados)
-                score = calcular_score_activo(patrones_validos, vol_est, tend, sr_bonus)
-
-                todos_res.append({
-                    "activo":activo,"info":info,"patrones":patrones_validos,
-                    "tendencia":tend,"tend_col":tend_col,
-                    "vol_est":vol_est,"vol_pct":vol_pct,"vol_msg":vol_msg,"vol_col":vol_col,"vol_cls":vol_cls,
-                    "precio":precio,"rsi":rsi_v,"sin_datos":False,
-                    "mercado_plano":vol_est in ("PLANO","EXTREMA"),
-                    "tiene_senal":len(pat_alineados)>0,
-                    "n_alineados":len(pat_alineados),
-                    "conf_score":conf_score,"conf_label":conf_label,
-                    "dir_dom":dir_dom,"max_exp":max_exp,
-                    "score":score,
-                    "soportes":soportes,"resistencias":resistencias,
-                    "cerca_sr":cerca_sr,"tipo_sr":tipo_sr,
-                })
-            else:
-                prog.progress((idx+1) / max(len(activos_sel), 1))
-                todos_res.append({
-                    "activo":activo,"info":info,"patrones":[],"tendencia":"SIN DATOS",
-                    "tend_col":"#475569","vol_est":"SIN DATOS","vol_pct":0,
-                    "vol_msg":"Sin datos","vol_col":"#475569","vol_cls":"atr-flat",
-                    "precio":0,"rsi":50,"sin_datos":True,"mercado_plano":False,
-                    "tiene_senal":False,"n_alineados":0,"conf_score":0,
-                    "conf_label":"SIN SEÑAL","dir_dom":"ALCISTA","max_exp":15,"score":0,
-                    "soportes":[],"resistencias":[],"cerca_sr":False,"tipo_sr":"",
-                })
-
-        prog.empty(); txt.empty()
-        todos_res.sort(key=lambda x: x["score"], reverse=True)
-        st.session_state.resultados_scan = todos_res
-
-        # Construir alertas
-        alertas = []
-        hora_scan = datetime.now().strftime("%H:%M")
-        for r in todos_res:
-            pat_al = [p for p in r["patrones"] if p.get("alineado") and p["conf"] >= 65]
-            if not pat_al or r["mercado_plano"]: continue
-            conf_score, conf_label, max_exp, dir_dom = calcular_confluencia(pat_al)
-            nombres = ", ".join(list(dict.fromkeys([p["patron"] for p in pat_al]))[:3])
-            alerta_id = f"{r['activo']}_{hora_scan}"
-
-            alertas.append({
-                "id":alerta_id,
-                "activo":r["activo"],"dir":dir_dom,
-                "conf":int(conf_score),"precio":r["precio"],
-                "expiracion":expiracion_str(max_exp),
-                "vol_est":r["vol_est"],"hora":hora_scan,
-                "n_patrones":len(pat_al),"conf_label":conf_label,
-                "patrones_nombres":nombres,
+            todos_res.append({
+                "activo":activo,"info":info,"patrones":patrones_validos,
+                "tendencia":tend,"tend_col":tend_col,
+                "vol_est":vol_est,"vol_pct":vol_pct,"vol_msg":vol_msg,"vol_col":vol_col,"vol_cls":vol_cls,
+                "precio":precio,"rsi":rsi_v,"sin_datos":False,
+                "mercado_plano":vol_est=="PLANO",
+                "tiene_senal":len(pat_alineados)>0,
+                "n_alineados":len(pat_alineados),
+                "conf_score":conf_score,"conf_label":conf_label,
+                "dir_dom":dir_dom,"max_exp":max_exp,
+                "score":score,
+            })
+        else:
+            todos_res.append({
+                "activo":activo,"info":info,"patrones":[],"tendencia":"SIN DATOS",
+                "tend_col":"#475569","vol_est":"SIN DATOS","vol_pct":0,
+                "vol_msg":"Sin datos","vol_col":"#475569","vol_cls":"atr-flat",
+                "precio":0,"rsi":50,"sin_datos":True,"mercado_plano":False,
+                "tiene_senal":False,"n_alineados":0,"conf_score":0,
+                "conf_label":"SIN SEÑAL","dir_dom":"ALCISTA","max_exp":15,"score":0,
             })
 
-            # FIX: evitar duplicados en historial por activo+hora
-            historial_actual = st.session_state.get("historial", [])
-            ya_existe = any(h["activo"]==r["activo"] and h["hora"]==hora_scan for h in historial_actual)
-            if not ya_existe:
-                st.session_state.historial.append({
-                    "fecha":date.today().strftime("%d/%m"),"hora":hora_scan,
-                    "activo":r["activo"],"dir":dir_dom,
-                    "conf":int(conf_score),"conf_label":conf_label,
-                    "n_patrones":len(pat_al),"expiracion":expiracion_str(max_exp),
-                    "resultado":None,
-                })
+    prog.empty(); txt.empty()
+    todos_res.sort(key=lambda x: x["score"], reverse=True)
+    st.session_state.resultados_scan = todos_res
 
-        alertas.sort(key=lambda x: x["conf"], reverse=True)
-        st.session_state.alertas  = alertas
-        st.session_state.ultimo_scan = datetime.now().strftime("%H:%M:%S")
-        st.session_state.confirmadas = set()
-        st.session_state.ia_analisis = ""
+    # Construir alertas
+    alertas = []
+    hora_scan = datetime.now().strftime("%H:%M")
+    for r in todos_res:
+        pat_al = [p for p in r["patrones"] if p.get("alineado") and p["conf"] >= 65]
+        if not pat_al or r["mercado_plano"]: continue
+        conf_score, conf_label, max_exp, dir_dom = calcular_confluencia(pat_al)
+        nombres = ", ".join(list(dict.fromkeys([p["patron"] for p in pat_al]))[:3])
+        alerta_id = f"{r['activo']}_{hora_scan}"
 
-        # Alerta sonora + Telegram si hay señal con Score > 80
-        alertas_fuertes = [a for a in alertas if a["conf"] >= 80]
-        if alertas_fuertes:
-            mejor = alertas_fuertes[0]
-            alerta_key = f"{mejor['activo']}_{mejor['hora']}"
-            if alerta_key != st.session_state.get("ultima_alerta_sonido",""):
-                st.session_state.ultima_alerta_sonido = alerta_key
+        alertas.append({
+            "id":alerta_id,
+            "activo":r["activo"],"dir":dir_dom,
+            "conf":int(conf_score),"precio":r["precio"],
+            "expiracion":expiracion_str(max_exp),
+            "vol_est":r["vol_est"],"hora":hora_scan,
+            "n_patrones":len(pat_al),"conf_label":conf_label,
+            "patrones_nombres":nombres,
+        })
 
-                # ── TELEGRAM ──
-                if st.session_state.get("telegram_on") and st.session_state.get("telegram_token"):
-                    ic_tg   = "🟢" if mejor["dir"] == "ALCISTA" else "🔴"
-                    acc_tg  = "CALL ▲" if mejor["dir"] == "ALCISTA" else "PUT ▼"
-                    n_al    = len(alertas_fuertes)
-                    # Mensaje principal
-                    msg = (
-                        f"{ic_tg} <b>ALERTA — {mejor['activo']}</b>\n"
-                        f"━━━━━━━━━━━━━━\n"
-                        f"📊 Direccion: <b>{acc_tg}</b>\n"
-                        f"⏱ Expiracion: {mejor['expiracion']}\n"
-                        f"🎯 Score: {mejor['conf']}% — {mejor['conf_label']}\n"
-                        f"📌 Patrones: {mejor['patrones_nombres']}\n"
-                        f"💰 Precio: ${mejor['precio']:.2f}\n"
-                        f"🕐 Hora: {mejor['hora']} UTC\n"
-                        f"━━━━━━━━━━━━━━\n"
-                    )
-                    if n_al > 1:
-                        msg += f"<i>+{n_al-1} alertas mas en el radar</i>\n"
-                    # Capital info
-                    capital = st.session_state.get("capital_dia", 0)
-                    if capital > 0:
-                        msg += f"\n💵 Entrada 2%: <b>${capital*0.02:.2f}</b>"
-                    msg += "\n\n<i>Hector Pattern Detector v5</i>"
-                    enviar_telegram(st.session_state.telegram_token, st.session_state.telegram_chat_id, msg)
+        # FIX: evitar duplicados en historial por activo+hora
+        historial_actual = st.session_state.get("historial", [])
+        ya_existe = any(h["activo"]==r["activo"] and h["hora"]==hora_scan for h in historial_actual)
+        if not ya_existe:
+            st.session_state.historial.append({
+                "fecha":date.today().strftime("%d/%m"),"hora":hora_scan,
+                "activo":r["activo"],"dir":dir_dom,
+                "conf":int(conf_score),"conf_label":conf_label,
+                "n_patrones":len(pat_al),"expiracion":expiracion_str(max_exp),
+                "resultado":None,
+            })
 
-                    # Si hay mas de 1 alerta fuerte, mandar resumen
-                    if n_al > 1:
-                        resumen = "📋 <b>RESUMEN DEL SCAN</b>\n━━━━━━━━━━━━━━\n"
-                        for a in alertas_fuertes[:4]:
-                            ic2 = "🟢" if a["dir"]=="ALCISTA" else "🔴"
-                            resumen += f"{ic2} {a['activo']} — {a['conf']}% — {'CALL' if a['dir']=='ALCISTA' else 'PUT'} {a['expiracion']}\n"
-                        enviar_telegram(st.session_state.telegram_token, st.session_state.telegram_chat_id, resumen)
+    alertas.sort(key=lambda x: x["conf"], reverse=True)
+    st.session_state.alertas  = alertas
+    st.session_state.ultimo_scan = datetime.now().strftime("%H:%M:%S")
+    st.session_state.confirmadas = set()
+    st.session_state.ia_analisis = ""
 
-                # ── SONIDO ──
-                audio_html = """
-                <script>
-                try {
-                  var ctx = new (window.AudioContext || window.webkitAudioContext)();
-                  function beep(freq, start, dur) {
-                    var o = ctx.createOscillator();
-                    var g = ctx.createGain();
-                    o.connect(g); g.connect(ctx.destination);
-                    o.frequency.value = freq;
-                    g.gain.setValueAtTime(0.3, ctx.currentTime+start);
-                    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+start+dur);
-                    o.start(ctx.currentTime+start);
-                    o.stop(ctx.currentTime+start+dur);
-                  }
-                  beep(880, 0, 0.15);
-                  beep(660, 0.2, 0.15);
-                  beep(880, 0.4, 0.25);
-                } catch(e) {}
-                </script>
-                """
-                components_v1.html(audio_html, height=0)
+    # ── TELEGRAM ──
+    if st.session_state.get("telegram_on") and st.session_state.get("telegram_token") and st.session_state.get("telegram_chat_id"):
+        for al in [a for a in alertas if a["conf"] >= 80]:
+            key_tg = f"tg_{al['activo']}_{al['hora']}"
+            enviadas = st.session_state.get("tg_enviadas", set())
+            if key_tg not in enviadas:
+                acc = "CALL ▲" if al["dir"] == "ALCISTA" else "PUT ▼"
+                ic  = "📈" if al["dir"] == "ALCISTA" else "📉"
+                cap = st.session_state.get("capital_dia", 467.86)
+                msg = (f"{ic} <b>ALERTA — {al['activo']}</b>\n"
+                       f"━━━━━━━━━━━━━━\n"
+                       f"📊 {acc}\n"
+                       f"🎯 Score: {al['conf']}% — {al['conf_label']}\n"
+                       f"📌 {al['patrones_nombres']}\n"
+                       f"⏱ Expiracion: {al['expiracion']}\n"
+                       f"💰 Precio: ${al['precio']:.2f}\n"
+                       f"💵 Entrada 2%: <b>${cap*0.02:.2f}</b>\n"
+                       f"🕐 {al['hora']} UTC\n"
+                       f"<i>Hector Pattern Detector v5</i>")
+                ok = enviar_telegram(st.session_state.telegram_token, st.session_state.telegram_chat_id, msg)
+                if ok:
+                    enviadas.add(key_tg)
+                    st.session_state.tg_enviadas = enviadas
 
-        # Enviar alertas a Telegram si esta configurado
-        if st.session_state.get("telegram_on") and st.session_state.get("telegram_token") and st.session_state.get("telegram_chat_id"):
-            alertas_tg = [a for a in alertas if a["conf"] >= 80]
-            for al in alertas_tg:
-                alerta_key_tg = f"tg_{al['activo']}_{al['hora']}"
-                enviadas = st.session_state.get("tg_enviadas", set())
-                if alerta_key_tg not in enviadas:
-                    capital_tg = st.session_state.get("capital_dia", 467.86)
-                    msg_tg = armar_mensaje_alerta(al, capital_tg)
-                    ok = enviar_telegram(st.session_state.telegram_token, st.session_state.telegram_chat_id, msg_tg)
-                    if ok:
-                        enviadas.add(alerta_key_tg)
-                        st.session_state.tg_enviadas = enviadas
+    # ── SONIDO ──
+    alertas_fuertes = [a for a in alertas if a["conf"] >= 80]
+    if alertas_fuertes:
+        mejor = alertas_fuertes[0]
+        key_s = f"{mejor['activo']}_{mejor['hora']}"
+        if key_s != st.session_state.get("ultima_alerta_sonido", ""):
+            st.session_state.ultima_alerta_sonido = key_s
+            audio_html = """<script>
+try {
+  var ctx = new (window.AudioContext || window.webkitAudioContext)();
+  [880,660,880].forEach(function(f,i){
+    var o=ctx.createOscillator(), g=ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value=f;
+    g.gain.setValueAtTime(0.3, ctx.currentTime+i*0.18);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+i*0.18+0.15);
+    o.start(ctx.currentTime+i*0.18); o.stop(ctx.currentTime+i*0.18+0.15);
+  });
+} catch(e) {}
+</script>"""
+            components_v1.html(audio_html, height=0)
 
-        st.rerun()
+    st.rerun()
 
 # ================================================================
 # TABS
 # ================================================================
-tab_radar, tab_ranking, tab_alert, tab_hist, tab_tracker, tab_atr, tab_stats, tab_capital, tab_confirmar = st.tabs([
-    "RADAR","RANKING","ALERTAS","HISTORIAL","TRACKER","VOLATILIDAD ATR","ESTADISTICAS","CAPITAL","📷 CONFIRMAR"
+tab_radar, tab_ranking, tab_alert, tab_hist, tab_tracker, tab_atr, tab_stats, tab_confirmar = st.tabs([
+    "RADAR","RANKING","ALERTAS","HISTORIAL","TRACKER","VOLATILIDAD ATR","ESTADISTICAS","📷 CONFIRMAR"
 ])
 
 # ── RADAR ──────────────────────────────────────
@@ -1438,216 +1186,86 @@ with tab_stats:
 
 # ================================================================
 
-# ── CAPITAL ─────────────────────────────────────
-with tab_capital:
-    st.markdown('<div class="sec">GESTION DE CAPITAL Y RIESGO</div>', unsafe_allow_html=True)
-
-    capital = st.session_state.capital_dia
-    sl_pct  = st.session_state.stop_loss_pct
-    perdida = st.session_state.perdida_dia
-    sl_monto = capital * sl_pct / 100
-    pct_usado = min(100, int(perdida / sl_monto * 100)) if sl_monto > 0 else 0
-    barra_col = "#34d399" if pct_usado < 50 else ("#fbbf24" if pct_usado < 80 else "#f87171")
-
-    # KPIs principales
-    k1,k2,k3,k4 = st.columns(4)
-    for col, lbl, val, color in [
-        (k1, "CAPITAL DEL DIA",  f"${capital:.2f}",          "#1a2940"),
-        (k2, "ENTRADA 1%",       f"${capital*0.01:.2f}",     "#16a34a"),
-        (k3, "ENTRADA 2%",       f"${capital*0.02:.2f}",     "#c8920a"),
-        (k4, "STOP LOSS DIARIO", f"${sl_monto:.2f} ({sl_pct}%)", "#dc2626"),
-    ]:
-        with col:
-            st.markdown(f'<div class="kpi"><div class="kpi-label">{lbl}</div><div class="kpi-value" style="color:{color};">{val}</div></div>', unsafe_allow_html=True)
-
-    st.markdown('<div class="sec" style="margin-top:14px;">ESTADO DEL DIA</div>', unsafe_allow_html=True)
-
-    estado_txt = "🛑 STOP LOSS ALCANZADO — NO OPERAR" if perdida >= sl_monto else ("⚠️ RIESGO ALTO" if pct_usado >= 70 else "✅ CAPITAL OK — OPERAR")
-    estado_col = "#dc2626" if perdida >= sl_monto else ("#f97316" if pct_usado >= 70 else "#16a34a")
-    estado_bg  = "#fff0f0" if perdida >= sl_monto else ("#fffbf0" if pct_usado >= 70 else "#e8f9f0")
-
-    st.markdown(f"""
-    <div style="background:{estado_bg};border:2px solid {estado_col};border-radius:10px;padding:16px;margin-bottom:14px;">
-      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:22px;color:{estado_col};margin-bottom:8px;">{estado_txt}</div>
-      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a6080;margin-bottom:8px;">Perdida acumulada: ${perdida:.2f} de ${sl_monto:.2f} permitidos</div>
-      <div style="height:12px;background:#bdd4e8;border-radius:6px;overflow:hidden;">
-        <div style="height:100%;width:{pct_usado}%;background:{barra_col};border-radius:6px;transition:width 0.5s;"></div>
-      </div>
-      <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:{barra_col};margin-top:4px;">{pct_usado}% del stop loss usado</div>
-    </div>""", unsafe_allow_html=True)
-
-    st.markdown('<div class="sec">REGISTRAR RESULTADO DE OPERACION</div>', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        monto_op = st.number_input("Monto operado $", min_value=1.0, max_value=float(capital), value=float(capital*0.02), step=1.0, key="monto_op_cap")
-    with c2:
-        resultado_op = st.selectbox("Resultado", ["—","WIN","LOSS"], key="res_op_cap")
-    with c3:
-        payout_pct = st.number_input("Payout %", min_value=50, max_value=100, value=80, step=1, key="payout_cap")
-
-    if resultado_op == "WIN":
-        ganancia = monto_op * payout_pct / 100
-        st.markdown(f'<div class="atr-ok"><b style="color:#16a34a;">GANANCIA: +${ganancia:.2f}</b></div>', unsafe_allow_html=True)
-        if st.button("Registrar WIN", key="reg_win_cap"):
-            # En wins reducimos la perdida acumulada si habia
-            if st.session_state.perdida_dia > 0:
-                st.session_state.perdida_dia = max(0, st.session_state.perdida_dia - ganancia)
-            st.rerun()
-    elif resultado_op == "LOSS":
-        st.markdown(f'<div class="atr-flat"><b style="color:#dc2626;">PERDIDA: -${monto_op:.2f}</b></div>', unsafe_allow_html=True)
-        if st.button("Registrar LOSS", key="reg_loss_cap"):
-            st.session_state.perdida_dia += monto_op
-            if st.session_state.perdida_dia >= sl_monto:
-                st.session_state.radar_bloqueado = True
-            st.rerun()
-
-    st.markdown('<div class="sec" style="margin-top:14px;">CALCULADORA DE ENTRADAS</div>', unsafe_allow_html=True)
-    cap_calc = st.number_input("Capital a calcular", min_value=10.0, value=float(capital), step=10.0, key="cap_calc")
-    for pct, label, color in [(1,"Entrada conservadora (1%)","#16a34a"),(2,"Entrada estandar (2%)","#c8920a"),(3,"Entrada agresiva (3%)","#dc2626"),(5,"Entrada max (5%)","#7c3aed")]:
-        monto = cap_calc * pct / 100
-        st.markdown(f'<div style="display:flex;justify-content:space-between;padding:8px 14px;background:#f0f6fc;border:1px solid #bdd4e8;border-radius:6px;margin-bottom:4px;"><span style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a6080;">{label}</span><span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:16px;color:{color};">${monto:.2f}</span></div>', unsafe_allow_html=True)
-
-    if st.button("Reset dia completo", key="reset_dia_cap"):
-        st.session_state.perdida_dia = 0.0
-        st.session_state.radar_bloqueado = False
-        st.rerun()
-
-
-# ── CONFIRMAR CON IMAGEN ────────────────────────
+# ── CONFIRMAR CON IMAGEN ─────────────────────────
 with tab_confirmar:
     st.markdown('<div class="sec">📷 CONFIRMAR ENTRADA — ANALIZADOR DE GRAFICO</div>', unsafe_allow_html=True)
-
     st.markdown("""
-    <div style="background:#fff8e7;border:1px solid #c8920a;border-radius:10px;padding:14px 16px;margin-bottom:14px;">
-      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:16px;color:#c8920a;margin-bottom:6px;">Como usar</div>
+    <div style="background:#fff8e7;border:1px solid #c8920a;border-radius:10px;padding:12px 16px;margin-bottom:12px;">
+      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8920a;margin-bottom:4px;">Como usar</div>
       <div style="font-size:13px;color:#4a6080;line-height:1.8;">
-      1. El detector encontro una alerta → ir a IQ Option<br>
-      2. Sacar captura de pantalla del grafico M15<br>
+      1. Llega alerta → ir a IQ Option → abrir grafico M15<br>
+      2. Sacar captura de pantalla<br>
       3. Subir la imagen aca<br>
-      4. La IA analiza el grafico y confirma ENTRAR o ESPERAR
+      4. La IA confirma ENTRAR / ESPERAR / NO ENTRAR
       </div>
     </div>""", unsafe_allow_html=True)
 
     if not st.session_state.api_key.startswith("sk-ant-"):
-        st.markdown('<div class="atr-flat"><b style="color:#dc2626;">Necesitas la clave API de Anthropic para usar esta funcion</b></div>', unsafe_allow_html=True)
+        st.markdown('<div class="atr-flat"><b style="color:#dc2626;">Necesitas la clave API de Anthropic (sidebar)</b></div>', unsafe_allow_html=True)
     else:
-        # Selector de activo y direccion esperada
         c1, c2 = st.columns(2)
         with c1:
-            activo_conf = st.selectbox("Activo de la alerta", list(ACTIVOS.keys()), key="act_conf")
+            activo_conf = st.selectbox("Activo", list(ACTIVOS.keys()), key="act_conf_sel")
         with c2:
-            dir_conf = st.selectbox("Direccion esperada", ["ALCISTA (CALL)", "BAJISTA (PUT)"], key="dir_conf")
+            dir_conf = st.selectbox("Direccion esperada", ["ALCISTA (CALL)", "BAJISTA (PUT)"], key="dir_conf_sel")
 
-        # Subir imagen
-        st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#5a7a99;margin:10px 0 4px;">SUBE LA CAPTURA DEL GRAFICO</div>', unsafe_allow_html=True)
-        img_file = st.file_uploader("Captura del grafico", type=["png","jpg","jpeg","webp"], key="img_upload", label_visibility="collapsed")
+        img_file = st.file_uploader("Captura del grafico M15", type=["png","jpg","jpeg","webp"], key="img_up", label_visibility="collapsed")
 
-        if img_file is not None:
-            # Mostrar imagen subida
-            st.image(img_file, caption="Grafico subido", use_column_width=True)
-
-            if st.button("ANALIZAR GRAFICO CON IA", key="btn_analizar_img"):
-                with st.spinner("La IA esta analizando el grafico..."):
+        if img_file:
+            st.image(img_file, use_column_width=True)
+            if st.button("ANALIZAR CON IA", key="btn_analizar_img"):
+                with st.spinner("Analizando grafico..."):
                     try:
-                        # Convertir imagen a base64
-                        img_bytes = img_file.read()
-                        img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+                        img_b64 = base64.b64encode(img_file.read()).decode()
                         ext = img_file.name.split(".")[-1].lower()
-                        media_type = "image/jpeg" if ext in ("jpg","jpeg") else f"image/{ext}"
-
-                        # Obtener alertas activas para contexto
-                        alertas_ctx = ""
-                        if st.session_state.alertas:
-                            al_act = [a for a in st.session_state.alertas if a["activo"] == activo_conf]
-                            if al_act:
-                                a = al_act[0]
-                                alertas_ctx = f"El detector encontro: {a['patrones_nombres']} con score {a['conf']}% - {a['conf_label']}."
-
+                        mtype = "image/jpeg" if ext in ("jpg","jpeg") else f"image/{ext}"
                         dir_limpia = "CALL (alcista)" if "ALCISTA" in dir_conf else "PUT (bajista)"
-                        sys_p = f"""Eres el analista personal de Hector, trader de IQ Option en temporalidad M15.
-Hector esta considerando entrar {dir_limpia} en {activo_conf}.
-{alertas_ctx}
-Analiza el grafico que te mando y respondele:
-1. DECISION: ENTRAR / ESPERAR / NO ENTRAR (en grande, claro)
-2. Por que en 2-3 lineas maximo
-3. Que debe ver en el grafico para confirmar
-Se directo, sin rodeos. Maximo 100 palabras. En espanol."""
-
-                        response = requests.post(
-                            "https://api.anthropic.com/v1/messages",
-                            headers={
-                                "Content-Type": "application/json",
-                                "x-api-key": st.session_state.api_key,
-                                "anthropic-version": "2023-06-01"
-                            },
-                            json={
-                                "model": "claude-sonnet-4-20250514",
-                                "max_tokens": 300,
-                                "system": sys_p,
-                                "messages": [{
-                                    "role": "user",
-                                    "content": [
-                                        {
-                                            "type": "image",
-                                            "source": {
-                                                "type": "base64",
-                                                "media_type": media_type,
-                                                "data": img_b64
-                                            }
-                                        },
-                                        {
-                                            "type": "text",
-                                            "text": f"Analiza este grafico M15 de {activo_conf} y dime si entro {dir_limpia} ahora."
-                                        }
-                                    ]
-                                }]
-                            },
-                            timeout=45
-                        )
-
-                        if response.status_code == 200:
-                            resp_txt = response.json()["content"][0]["text"]
-
-                            # Determinar color segun decision
-                            if "ENTRAR" in resp_txt.upper() and "NO ENTRAR" not in resp_txt.upper():
-                                dec_col = "#16a34a"; dec_bg = "#e8f9f0"; dec_border = "#065f46"
-                                dec_icon = "🟢"
-                            elif "ESPERAR" in resp_txt.upper():
-                                dec_col = "#c8920a"; dec_bg = "#fff8e7"; dec_border = "#c8920a"
-                                dec_icon = "🟡"
+                        ctx = ""
+                        if st.session_state.alertas:
+                            al = next((a for a in st.session_state.alertas if a["activo"]==activo_conf), None)
+                            if al: ctx = f"El detector encontro: {al['patrones_nombres']} con score {al['conf']}%."
+                        sys_p = f"""Eres el analista personal de Hector, trader de IQ Option en M15.
+Hector considera entrar {dir_limpia} en {activo_conf}. {ctx}
+Analiza el grafico y responde:
+1. DECISION: ENTRAR / ESPERAR / NO ENTRAR (en grande)
+2. Por que — maximo 2 lineas
+3. Que debe ver para confirmar
+Directo, sin rodeos. Maximo 80 palabras. En espanol."""
+                        resp = requests.post("https://api.anthropic.com/v1/messages",
+                            headers={"Content-Type":"application/json","x-api-key":st.session_state.api_key,"anthropic-version":"2023-06-01"},
+                            json={"model":"claude-sonnet-4-20250514","max_tokens":300,"system":sys_p,
+                                  "messages":[{"role":"user","content":[
+                                      {"type":"image","source":{"type":"base64","media_type":mtype,"data":img_b64}},
+                                      {"type":"text","text":f"Analiza este grafico M15 de {activo_conf} — entro {dir_limpia}?"}
+                                  ]}]}, timeout=45)
+                        if resp.status_code == 200:
+                            txt_resp = resp.json()["content"][0]["text"]
+                            if "ENTRAR" in txt_resp.upper() and "NO ENTRAR" not in txt_resp.upper():
+                                dc,db,dbr,di = "#16a34a","#e8f9f0","#065f46","🟢"
+                            elif "ESPERAR" in txt_resp.upper():
+                                dc,db,dbr,di = "#c8920a","#fff8e7","#c8920a","🟡"
                             else:
-                                dec_col = "#dc2626"; dec_bg = "#fff0f0"; dec_border = "#991b1b"
-                                dec_icon = "🔴"
-
-                            st.markdown(f"""
-                            <div style="background:{dec_bg};border:2px solid {dec_border};border-radius:12px;padding:18px;margin-top:12px;">
-                              <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:28px;color:{dec_col};margin-bottom:10px;">{dec_icon} ANALISIS IA</div>
-                              <div style="font-size:14px;color:#1a2940;line-height:1.8;">{resp_txt.replace(chr(10),"<br>")}</div>
-                              <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;margin-top:10px;">{activo_conf} · {dir_conf} · {datetime.now().strftime("%H:%M")}</div>
+                                dc,db,dbr,di = "#dc2626","#fff0f0","#991b1b","🔴"
+                            st.markdown(f"""<div style="background:{db};border:2px solid {dbr};border-radius:12px;padding:16px;margin-top:10px;">
+                              <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:26px;color:{dc};margin-bottom:8px;">{di} ANALISIS IA</div>
+                              <div style="font-size:14px;color:#1a2940;line-height:1.8;">{txt_resp.replace(chr(10),"<br>")}</div>
+                              <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;margin-top:8px;">{activo_conf} · {dir_conf} · {datetime.now().strftime("%H:%M")}</div>
                             </div>""", unsafe_allow_html=True)
                         else:
-                            st.error(f"Error API: {response.status_code} — {response.text[:200]}")
-
+                            st.error(f"Error API {resp.status_code}")
                     except Exception as e:
-                        st.error(f"Error: {str(e)}")
-
+                        st.error(f"Error: {e}")
         else:
-            # Instruccion visual cuando no hay imagen
-            st.markdown("""
-            <div style="text-align:center;padding:40px 20px;background:#f0f6fc;border:2px dashed #bdd4e8;border-radius:12px;margin-top:10px;">
-              <div style="font-size:48px;margin-bottom:12px;">📱</div>
-              <div style="font-family:Rajdhani,sans-serif;font-size:18px;color:#4a6080;margin-bottom:8px;">Subi la captura de IQ Option</div>
-              <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#5a7a99;line-height:1.8;">
-              iPhone: screenshot → compartir → subir aca<br>
-              Android: captura → galeria → subir aca
-              </div>
+            st.markdown("""<div style="text-align:center;padding:40px 20px;background:#f0f6fc;border:2px dashed #bdd4e8;border-radius:12px;margin-top:10px;">
+              <div style="font-size:48px;margin-bottom:10px;">📱</div>
+              <div style="font-family:Rajdhani,sans-serif;font-size:18px;color:#4a6080;">Subi la captura de IQ Option</div>
+              <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#5a7a99;margin-top:6px;">iPhone: screenshot → subir aca</div>
             </div>""", unsafe_allow_html=True)
-
 
 # FOOTER
 # ================================================================
 st.markdown("""
 <div style="border-top:1px solid #bdd4e8;margin-top:24px;padding-top:10px;
 text-align:center;font-family:'Share Tech Mono',monospace;font-size:9px;color:#6a8aaa;letter-spacing:2px;">
-HECTOR PATTERN DETECTOR v5 · CAPITAL · AUTO-SCAN · SONIDO · SR · ATR · MACD · CONFLUENCIA · RANKING · 8 PATRONES · 6 ACTIVOS
+HECTOR PATTERN DETECTOR v4 · ATR · MACD · CONFLUENCIA · RANKING · HISTORIAL · TRACKER · 8 PATRONES · 6 ACTIVOS
 </div>""", unsafe_allow_html=True)
