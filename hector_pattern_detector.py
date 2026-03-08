@@ -849,40 +849,40 @@ if escanear:
                 })
 
         prog.empty(); txt.empty()
-    todos_res.sort(key=lambda x: x["score"], reverse=True)
-    st.session_state.resultados_scan = todos_res
+        todos_res.sort(key=lambda x: x["score"], reverse=True)
+        st.session_state.resultados_scan = todos_res
 
-    # Construir alertas
-    alertas = []
-    hora_scan = datetime.now().strftime("%H:%M")
-    for r in todos_res:
-        pat_al = [p for p in r["patrones"] if p.get("alineado") and p["conf"] >= 65]
-        if not pat_al or r["mercado_plano"]: continue
-        conf_score, conf_label, max_exp, dir_dom = calcular_confluencia(pat_al)
-        nombres = ", ".join(list(dict.fromkeys([p["patron"] for p in pat_al]))[:3])
-        alerta_id = f"{r['activo']}_{hora_scan}"
+        # Construir alertas
+        alertas = []
+        hora_scan = datetime.now().strftime("%H:%M")
+        for r in todos_res:
+            pat_al = [p for p in r["patrones"] if p.get("alineado") and p["conf"] >= 65]
+            if not pat_al or r["mercado_plano"]: continue
+            conf_score, conf_label, max_exp, dir_dom = calcular_confluencia(pat_al)
+            nombres = ", ".join(list(dict.fromkeys([p["patron"] for p in pat_al]))[:3])
+            alerta_id = f"{r['activo']}_{hora_scan}"
 
-        alertas.append({
-            "id":alerta_id,
-            "activo":r["activo"],"dir":dir_dom,
-            "conf":int(conf_score),"precio":r["precio"],
-            "expiracion":expiracion_str(max_exp),
-            "vol_est":r["vol_est"],"hora":hora_scan,
-            "n_patrones":len(pat_al),"conf_label":conf_label,
-            "patrones_nombres":nombres,
-        })
-
-        # FIX: evitar duplicados en historial por activo+hora
-        historial_actual = st.session_state.get("historial", [])
-        ya_existe = any(h["activo"]==r["activo"] and h["hora"]==hora_scan for h in historial_actual)
-        if not ya_existe:
-            st.session_state.historial.append({
-                "fecha":date.today().strftime("%d/%m"),"hora":hora_scan,
+            alertas.append({
+                "id":alerta_id,
                 "activo":r["activo"],"dir":dir_dom,
-                "conf":int(conf_score),"conf_label":conf_label,
-                "n_patrones":len(pat_al),"expiracion":expiracion_str(max_exp),
-                "resultado":None,
+                "conf":int(conf_score),"precio":r["precio"],
+                "expiracion":expiracion_str(max_exp),
+                "vol_est":r["vol_est"],"hora":hora_scan,
+                "n_patrones":len(pat_al),"conf_label":conf_label,
+                "patrones_nombres":nombres,
             })
+
+            # FIX: evitar duplicados en historial por activo+hora
+            historial_actual = st.session_state.get("historial", [])
+            ya_existe = any(h["activo"]==r["activo"] and h["hora"]==hora_scan for h in historial_actual)
+            if not ya_existe:
+                st.session_state.historial.append({
+                    "fecha":date.today().strftime("%d/%m"),"hora":hora_scan,
+                    "activo":r["activo"],"dir":dir_dom,
+                    "conf":int(conf_score),"conf_label":conf_label,
+                    "n_patrones":len(pat_al),"expiracion":expiracion_str(max_exp),
+                    "resultado":None,
+                })
 
         alertas.sort(key=lambda x: x["conf"], reverse=True)
         st.session_state.alertas  = alertas
