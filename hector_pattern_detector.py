@@ -569,7 +569,8 @@ if escanear:
         })
 
         # FIX: evitar duplicados en historial por activo+hora
-        ya_existe = any(h["activo"]==r["activo"] and h["hora"]==hora_scan for h in st.session_state.historial)
+        historial_actual = st.session_state.get("historial", [])
+        ya_existe = any(h["activo"]==r["activo"] and h["hora"]==hora_scan for h in historial_actual)
         if not ya_existe:
             st.session_state.historial.append({
                 "fecha":date.today().strftime("%d/%m"),"hora":hora_scan,
