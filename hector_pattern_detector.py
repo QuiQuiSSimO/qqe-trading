@@ -1,17 +1,18 @@
-# HECTOR PATTERN DETECTOR v4
+# HECTOR PATTERN DETECTOR v5
 # Sistema Profesional de Reconocimiento de Patrones
 # by Hector Trading — IQ Option M15
 #
-# v4 — Correcciones y mejoras autonomas:
-#   - MACD integrado como confirmacion de tendencia
-#   - calcular_score_activo() simplificado, sin desincronizacion
-#   - Historial sin duplicados (deduplicacion por activo+hora)
-#   - Confluencia solo cuenta patrones en la MISMA direccion
-#   - Expiracion de confluencia = la mayor de los patrones involucrados
-#   - Tracker WIN/LOSS robusto con key unico por alerta
-#   - Indicador de sesion activa en header (Londres / Nueva York)
+# v5 — Mejoras por pedido de Hector:
+#   - Gestion de Capital y Riesgo (pestaña CAPITAL)
+#   - Stop Loss diario automatico con bloqueo de radar
+#   - Auto-Refresh configurable (1/5/15 min)
+#   - Selector de horario de operacion
+#   - Alertas sonoras cuando Score > 80%
+#   - ATR extremo — aviso de volatilidad peligrosa
+#   - Soportes y Resistencias dinamicos (ultimos 100 periodos)
+#   - Score de confluencia aumenta si patron ocurre cerca de SR
 #
-# INSTALACION: pip install streamlit requests pandas numpy yfinance
+# INSTALACION: pip install streamlit requests pandas numpy yfinance streamlit-autorefresh
 # EJECUCION:   streamlit run hector_pattern_detector.py
 
 import streamlit as st
@@ -19,6 +20,12 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timezone, date
 import requests
+import streamlit.components.v1 as components_v1
+try:
+    from streamlit_autorefresh import st_autorefresh
+    AUTOREFRESH_OK = True
+except ImportError:
+    AUTOREFRESH_OK = False
 
 st.set_page_config(
     page_title="Hector Pattern Detector",
@@ -146,6 +153,15 @@ defaults = {
     "historial": [],
     "tracker": [],
     "ia_analisis": "",
+    "capital_dia": 467.86,
+    "stop_loss_pct": 10,
+    "perdida_dia": 0.0,
+    "radar_bloqueado": False,
+    "autorefresh_on": False,
+    "autorefresh_min": 5,
+    "hora_inicio_op": "07:00",
+    "hora_fin_op": "16:00",
+    "ultima_alerta_sonido": "",
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -237,9 +253,41 @@ def analizar_volatilidad(df):
     act  = atr.iloc[-1]
     prom = atr.iloc[-50:].mean()
     pct  = (act / prom) * 100 if prom > 0 else 100
-    if   pct >= 90: return "FUERTE", pct, "Volatilidad optima — OPERAR",           "#34d399","atr-ok"
-    elif pct >= 60: return "NORMAL", pct, "Volatilidad aceptable — Con precaucion", "#fbbf24","atr-low"
-    else:           return "PLANO",  pct, "Mercado sin fuerza — NO OPERAR",         "#f87171","atr-flat"
+    if   pct >= 180: return "EXTREMA", pct, "⚠️ Volatilidad extrema — PELIGRO",       "#f97316","atr-flat"
+    elif pct >= 90:  return "FUERTE",  pct, "Volatilidad optima — OPERAR",             "#34d399","atr-ok"
+    elif pct >= 60:  return "NORMAL",  pct, "Volatilidad aceptable — Con precaucion",  "#fbbf24","atr-low"
+    else:            return "PLANO",   pct, "Mercado sin fuerza — NO OPERAR",          "#f87171","atr-flat"
+
+def calcular_soportes_resistencias(df, periodos=100):
+    """Calcula niveles S/R basados en pivots de los ultimos N periodos"""
+    datos = df.tail(periodos)
+    precios = datos["cierre"].values
+    maximos = datos["maximo"].values
+    minimos = datos["minimo"].values
+
+    # Pivots: puntos donde el precio cambia de direccion
+    resistencias = []
+    soportes     = []
+    for i in range(2, len(maximos)-2):
+        if maximos[i] > maximos[i-1] and maximos[i] > maximos[i-2] and maximos[i] > maximos[i+1] and maximos[i] > maximos[i+2]:
+            resistencias.append(maximos[i])
+        if minimos[i] < minimos[i-1] and minimos[i] < minimos[i-2] and minimos[i] < minimos[i+1] and minimos[i] < minimos[i+2]:
+            soportes.append(minimos[i])
+
+    # Tomar los 3 mas recientes/relevantes
+    resistencias = sorted(set([round(r, 4) for r in resistencias]))[-3:]
+    soportes     = sorted(set([round(s, 4) for s in soportes]))[:3]
+    return soportes, resistencias
+
+def patron_cerca_sr(precio_actual, soportes, resistencias, tolerancia_pct=0.003):
+    """Devuelve True y tipo si el patron ocurre cerca de un nivel S/R"""
+    for s in soportes:
+        if abs(precio_actual - s) / s < tolerancia_pct:
+            return True, "SOPORTE"
+    for r in resistencias:
+        if abs(precio_actual - r) / r < tolerancia_pct:
+            return True, "RESISTENCIA"
+    return False, ""
 
 def filtro_tendencia(df):
     """Tendencia usando EMA200 + confirmacion MACD"""
@@ -395,14 +443,14 @@ def calcular_confluencia(patrones_alineados):
 
     return score, label, max_exp, dir_dom
 
-def calcular_score_activo(patrones_validos, vol_est, tendencia):
-    """FIX v4: recibe parametros directos, sin riesgo de desincronizacion."""
+def calcular_score_activo(patrones_validos, vol_est, tendencia, sr_bonus=0):
+    """v5: incluye bonus por patron cerca de S/R"""
     pat_alineados = [p for p in patrones_validos if p.get("alineado")]
     if not pat_alineados: return 0
     score, _, _, _ = calcular_confluencia(pat_alineados)
-    vol_bonus  = {"FUERTE":20,"NORMAL":10,"PLANO":0}.get(vol_est, 0)
+    vol_bonus  = {"FUERTE":20,"NORMAL":10,"PLANO":0,"EXTREMA":0}.get(vol_est, 0)
     tend_bonus = 0 if "LATERAL" in tendencia else 10
-    return score + vol_bonus + tend_bonus
+    return score + vol_bonus + tend_bonus + sr_bonus
 
 # ================================================================
 # SIDEBAR
@@ -429,6 +477,70 @@ with st.sidebar:
     confianza_min = st.slider("Confianza minima %", 50, 80, 63, 1)
     solo_confluencia = st.checkbox("Solo mostrar confluencias", value=False)
 
+    # ── AUTO-REFRESH ──
+    st.markdown("---")
+    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;letter-spacing:2px;margin-bottom:6px;">AUTO-SCAN</div>', unsafe_allow_html=True)
+    ar_on = st.checkbox("Activar escaneo automatico", value=st.session_state.autorefresh_on, key="ar_chk")
+    st.session_state.autorefresh_on = ar_on
+    if ar_on:
+        ar_min = st.selectbox("Frecuencia", [1, 5, 15], index=[1,5,15].index(st.session_state.autorefresh_min) if st.session_state.autorefresh_min in [1,5,15] else 1, key="ar_sel", format_func=lambda x: f"Cada {x} min")
+        st.session_state.autorefresh_min = ar_min
+        if AUTOREFRESH_OK:
+            st_autorefresh(interval=ar_min * 60 * 1000, key="autoref")
+        else:
+            st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#f87171;">Instalar: pip install streamlit-autorefresh</div>', unsafe_allow_html=True)
+        # Horario de operacion
+        st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;margin-top:6px;margin-bottom:4px;">HORARIO ACTIVO</div>', unsafe_allow_html=True)
+        hi = st.text_input("Desde (HH:MM)", value=st.session_state.hora_inicio_op, key="hi", label_visibility="collapsed", placeholder="09:00")
+        hf = st.text_input("Hasta (HH:MM)", value=st.session_state.hora_fin_op,    key="hf", label_visibility="collapsed", placeholder="16:00")
+        if hi: st.session_state.hora_inicio_op = hi
+        if hf: st.session_state.hora_fin_op    = hf
+
+    # ── CAPITAL Y RIESGO ──
+    st.markdown("---")
+    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;letter-spacing:2px;margin-bottom:6px;">CAPITAL Y RIESGO</div>', unsafe_allow_html=True)
+    capital_in = st.number_input("Capital del dia USD", min_value=10.0, max_value=100000.0,
+        value=float(st.session_state.capital_dia), step=10.0, key="cap_input", label_visibility="collapsed")
+    st.session_state.capital_dia = capital_in
+    sl_pct = st.slider("Stop Loss diario %", 5, 30, int(st.session_state.stop_loss_pct), 1, key="sl_slider")
+    st.session_state.stop_loss_pct = sl_pct
+    entrada_1pct = capital_in * 0.01
+    entrada_2pct = capital_in * 0.02
+    sl_monto     = capital_in * sl_pct / 100
+    perdida = st.session_state.perdida_dia
+    radar_ok = perdida < sl_monto
+    st.session_state.radar_bloqueado = not radar_ok
+    pct_usado = min(100, int(perdida / sl_monto * 100)) if sl_monto > 0 else 0
+    barra_col = "#34d399" if pct_usado < 50 else ("#fbbf24" if pct_usado < 80 else "#f87171")
+    st.markdown(f"""
+    <div style="background:#f0f6fc;border:1px solid #bdd4e8;border-radius:8px;padding:10px;margin-bottom:6px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;">ENTRADA 1%</span>
+        <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#1a2940;">${entrada_1pct:.2f}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+        <span style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;">ENTRADA 2%</span>
+        <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8920a;">${entrada_2pct:.2f}</span>
+      </div>
+      <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;margin-bottom:3px;">STOP LOSS: ${sl_monto:.2f} ({sl_pct}%)</div>
+      <div style="height:6px;background:#bdd4e8;border-radius:3px;overflow:hidden;">
+        <div style="height:100%;width:{pct_usado}%;background:{barra_col};border-radius:3px;transition:width 0.3s;"></div>
+      </div>
+      <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:{barra_col};margin-top:3px;">Perdida: ${perdida:.2f} / ${sl_monto:.2f}</div>
+    </div>""", unsafe_allow_html=True)
+    if not radar_ok:
+        st.markdown('<div style="background:#fff0f0;border:2px solid #dc2626;border-radius:8px;padding:8px;text-align:center;font-family:Share Tech Mono,monospace;font-size:10px;color:#dc2626;font-weight:700;">🛑 STOP LOSS ALCANZADO<br>RADAR BLOQUEADO</div>', unsafe_allow_html=True)
+    c_p1, c_p2 = st.columns(2)
+    with c_p1:
+        if st.button(f"+ Perdida", key="add_loss"):
+            st.session_state.perdida_dia += entrada_2pct
+            st.rerun()
+    with c_p2:
+        if st.button("Reset dia", key="reset_perdida"):
+            st.session_state.perdida_dia = 0.0
+            st.session_state.radar_bloqueado = False
+            st.rerun()
+
     st.markdown("---")
     # Tracker rapido en sidebar
     wins   = len([t for t in st.session_state.tracker if t["resultado"]=="WIN"])
@@ -454,9 +566,9 @@ with st.sidebar:
 st.markdown("""
 <div class="hector-brand">
   <div style='font-family:"Share Tech Mono",monospace;font-size:9px;color:#5a7a99;letter-spacing:3px;margin-bottom:6px;'>SISTEMA PROFESIONAL DE RECONOCIMIENTO DE PATRONES</div>
-  <div style='font-family:"Rajdhani",sans-serif;font-size:26px;font-weight:700;color:#c8920a;letter-spacing:4px;'>HECTOR PATTERN DETECTOR</div>
+  <div style='font-family:"Rajdhani",sans-serif;font-size:26px;font-weight:700;color:#c8920a;letter-spacing:4px;'>HECTOR PATTERN DETECTOR v5</div>
   <div style='font-family:"Share Tech Mono",monospace;font-size:9px;color:#3a5570;margin-top:4px;letter-spacing:2px;'>
-  8 PATRONES · 6 ACTIVOS · M15 · ATR · MACD · CONFLUENCIA · RANKING · HISTORIAL
+  8 PATRONES · 6 ACTIVOS · M15 · ATR · SR · CAPITAL · AUTO-SCAN · SONIDO
   </div>
 </div>""", unsafe_allow_html=True)
 
@@ -494,57 +606,75 @@ with col_est:
 # ESCANEO
 # ================================================================
 if escanear:
-    todos_res = []; prog = st.progress(0); txt = st.empty()
+    # Verificar horario de operacion
+    hora_actual = datetime.now(timezone.utc).strftime("%H:%M")
+    en_horario = True
+    if st.session_state.get("autorefresh_on") and st.session_state.get("hora_inicio_op") and st.session_state.get("hora_fin_op"):
+        hi = st.session_state.hora_inicio_op
+        hf = st.session_state.hora_fin_op
+        en_horario = hi <= hora_actual <= hf
 
-    for idx, activo in enumerate(activos_sel):
-        info = ACTIVOS[activo]
-        txt.markdown(f'<div style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:#c8920a;">Escaneando {activo}...</div>', unsafe_allow_html=True)
-        prog.progress((idx+1) / max(len(activos_sel), 1))
+    if st.session_state.get("radar_bloqueado"):
+        st.error("🛑 RADAR BLOQUEADO — Stop Loss diario alcanzado. Reseteá el contador para continuar.")
+    elif not en_horario:
+        st.warning(f"⏰ Fuera del horario de operacion configurado ({st.session_state.hora_inicio_op} - {st.session_state.hora_fin_op} UTC)")
+    else:
+        todos_res = []; prog = st.progress(0); txt = st.empty()
 
-        df = obtener_datos(info["yahoo"])
-        if df is not None and len(df) > 200:
-            patrones  = ejecutar_patrones(df)
-            tend, tend_col = filtro_tendencia(df)
-            vol_est, vol_pct, vol_msg, vol_col, vol_cls = analizar_volatilidad(df)
-            precio = df["cierre"].iloc[-1]
-            rsi_v  = calc_rsi(df["cierre"]).iloc[-1]
+        for idx, activo in enumerate(activos_sel):
+            info = ACTIVOS[activo]
+            txt.markdown(f'<div style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:#c8920a;">Escaneando {activo}...</div>', unsafe_allow_html=True)
+            prog.progress((idx+1) / max(len(activos_sel), 1))
 
-            patrones = [p for p in patrones if p["conf"] >= confianza_min]
-            for p in patrones:
-                # Alineacion: consideramos ALCISTA(deb) como alcista para no perder señales
-                es_alc_tend = "ALCISTA" in tend
-                es_baj_tend = "BAJISTA" in tend
-                p["alineado"] = (es_alc_tend and p["dir"]=="ALCISTA") or (es_baj_tend and p["dir"]=="BAJISTA")
-                p["min_exp"]  = PATRONES.get(p["patron"],{}).get("min_exp", 15)
+            df = obtener_datos(info["yahoo"])
+            if df is not None and len(df) > 200:
+                patrones  = ejecutar_patrones(df)
+                tend, tend_col = filtro_tendencia(df)
+                vol_est, vol_pct, vol_msg, vol_col, vol_cls = analizar_volatilidad(df)
+                precio = df["cierre"].iloc[-1]
+                rsi_v  = calc_rsi(df["cierre"]).iloc[-1]
+                soportes, resistencias = calcular_soportes_resistencias(df)
+                cerca_sr, tipo_sr = patron_cerca_sr(precio, soportes, resistencias)
+                sr_bonus = 15 if cerca_sr else 0
 
-            patrones_validos = [] if vol_est == "PLANO" else patrones
-            pat_alineados    = [p for p in patrones_validos if p.get("alineado")]
-            conf_score, conf_label, max_exp, dir_dom = calcular_confluencia(pat_alineados)
-            score = calcular_score_activo(patrones_validos, vol_est, tend)
+                patrones = [p for p in patrones if p["conf"] >= confianza_min]
+                for p in patrones:
+                    es_alc_tend = "ALCISTA" in tend
+                    es_baj_tend = "BAJISTA" in tend
+                    p["alineado"] = (es_alc_tend and p["dir"]=="ALCISTA") or (es_baj_tend and p["dir"]=="BAJISTA")
+                    p["min_exp"]  = PATRONES.get(p["patron"],{}).get("min_exp", 15)
 
-            todos_res.append({
-                "activo":activo,"info":info,"patrones":patrones_validos,
-                "tendencia":tend,"tend_col":tend_col,
-                "vol_est":vol_est,"vol_pct":vol_pct,"vol_msg":vol_msg,"vol_col":vol_col,"vol_cls":vol_cls,
-                "precio":precio,"rsi":rsi_v,"sin_datos":False,
-                "mercado_plano":vol_est=="PLANO",
-                "tiene_senal":len(pat_alineados)>0,
-                "n_alineados":len(pat_alineados),
-                "conf_score":conf_score,"conf_label":conf_label,
-                "dir_dom":dir_dom,"max_exp":max_exp,
-                "score":score,
-            })
-        else:
-            todos_res.append({
-                "activo":activo,"info":info,"patrones":[],"tendencia":"SIN DATOS",
-                "tend_col":"#475569","vol_est":"SIN DATOS","vol_pct":0,
-                "vol_msg":"Sin datos","vol_col":"#475569","vol_cls":"atr-flat",
-                "precio":0,"rsi":50,"sin_datos":True,"mercado_plano":False,
-                "tiene_senal":False,"n_alineados":0,"conf_score":0,
-                "conf_label":"SIN SEÑAL","dir_dom":"ALCISTA","max_exp":15,"score":0,
-            })
+                patrones_validos = [] if vol_est in ("PLANO","EXTREMA") else patrones
+                pat_alineados    = [p for p in patrones_validos if p.get("alineado")]
+                conf_score, conf_label, max_exp, dir_dom = calcular_confluencia(pat_alineados)
+                score = calcular_score_activo(patrones_validos, vol_est, tend, sr_bonus)
 
-    prog.empty(); txt.empty()
+                todos_res.append({
+                    "activo":activo,"info":info,"patrones":patrones_validos,
+                    "tendencia":tend,"tend_col":tend_col,
+                    "vol_est":vol_est,"vol_pct":vol_pct,"vol_msg":vol_msg,"vol_col":vol_col,"vol_cls":vol_cls,
+                    "precio":precio,"rsi":rsi_v,"sin_datos":False,
+                    "mercado_plano":vol_est in ("PLANO","EXTREMA"),
+                    "tiene_senal":len(pat_alineados)>0,
+                    "n_alineados":len(pat_alineados),
+                    "conf_score":conf_score,"conf_label":conf_label,
+                    "dir_dom":dir_dom,"max_exp":max_exp,
+                    "score":score,
+                    "soportes":soportes,"resistencias":resistencias,
+                    "cerca_sr":cerca_sr,"tipo_sr":tipo_sr,
+                })
+            else:
+                todos_res.append({
+                    "activo":activo,"info":info,"patrones":[],"tendencia":"SIN DATOS",
+                    "tend_col":"#475569","vol_est":"SIN DATOS","vol_pct":0,
+                    "vol_msg":"Sin datos","vol_col":"#475569","vol_cls":"atr-flat",
+                    "precio":0,"rsi":50,"sin_datos":True,"mercado_plano":False,
+                    "tiene_senal":False,"n_alineados":0,"conf_score":0,
+                    "conf_label":"SIN SEÑAL","dir_dom":"ALCISTA","max_exp":15,"score":0,
+                    "soportes":[],"resistencias":[],"cerca_sr":False,"tipo_sr":"",
+                })
+
+        prog.empty(); txt.empty()
     todos_res.sort(key=lambda x: x["score"], reverse=True)
     st.session_state.resultados_scan = todos_res
 
@@ -580,18 +710,52 @@ if escanear:
                 "resultado":None,
             })
 
-    alertas.sort(key=lambda x: x["conf"], reverse=True)
-    st.session_state.alertas  = alertas
-    st.session_state.ultimo_scan = datetime.now().strftime("%H:%M:%S")
-    st.session_state.confirmadas = set()
-    st.session_state.ia_analisis = ""
-    st.rerun()
+        alertas.sort(key=lambda x: x["conf"], reverse=True)
+        st.session_state.alertas  = alertas
+        st.session_state.ultimo_scan = datetime.now().strftime("%H:%M:%S")
+        st.session_state.confirmadas = set()
+        st.session_state.ia_analisis = ""
+
+        # Alerta sonora si hay señal con Score > 80
+        alertas_fuertes = [a for a in alertas if a["conf"] >= 80]
+        if alertas_fuertes:
+            mejor = alertas_fuertes[0]
+            alerta_key = f"{mejor['activo']}_{mejor['hora']}"
+            if alerta_key != st.session_state.get("ultima_alerta_sonido",""):
+                st.session_state.ultima_alerta_sonido = alerta_key
+                # Audio embebido HTML — beep de alerta
+                audio_html = """
+                <audio autoplay>
+                  <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAA
+EAAQARAAIAIgACABAAZGF0YVAGAACBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGB
+gcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwf//////////AQIDBAUGB
+wgJCgsM" type="audio/wav">
+                </audio>
+                <script>
+                try {
+                  var ctx = new (window.AudioContext || window.webkitAudioContext)();
+                  var osc = ctx.createOscillator();
+                  var gain = ctx.createGain();
+                  osc.connect(gain);
+                  gain.connect(ctx.destination);
+                  osc.frequency.setValueAtTime(880, ctx.currentTime);
+                  osc.frequency.setValueAtTime(660, ctx.currentTime + 0.15);
+                  osc.frequency.setValueAtTime(880, ctx.currentTime + 0.3);
+                  gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+                  osc.start(ctx.currentTime);
+                  osc.stop(ctx.currentTime + 0.5);
+                } catch(e) {}
+                </script>
+                """
+                components_v1.html(audio_html, height=0)
+        st.rerun()
 
 # ================================================================
 # TABS
 # ================================================================
-tab_radar, tab_ranking, tab_alert, tab_hist, tab_tracker, tab_atr, tab_stats = st.tabs([
-    "RADAR","RANKING","ALERTAS","HISTORIAL","TRACKER","VOLATILIDAD ATR","ESTADISTICAS"
+tab_radar, tab_ranking, tab_alert, tab_hist, tab_tracker, tab_atr, tab_stats, tab_capital = st.tabs([
+    "RADAR","RANKING","ALERTAS","HISTORIAL","TRACKER","VOLATILIDAD ATR","ESTADISTICAS","CAPITAL"
 ])
 
 # ── RADAR ──────────────────────────────────────
@@ -1053,10 +1217,85 @@ with tab_stats:
         </div>""", unsafe_allow_html=True)
 
 # ================================================================
+
+# ── CAPITAL ─────────────────────────────────────
+with tab_capital:
+    st.markdown('<div class="sec">GESTION DE CAPITAL Y RIESGO</div>', unsafe_allow_html=True)
+
+    capital = st.session_state.capital_dia
+    sl_pct  = st.session_state.stop_loss_pct
+    perdida = st.session_state.perdida_dia
+    sl_monto = capital * sl_pct / 100
+    pct_usado = min(100, int(perdida / sl_monto * 100)) if sl_monto > 0 else 0
+    barra_col = "#34d399" if pct_usado < 50 else ("#fbbf24" if pct_usado < 80 else "#f87171")
+
+    # KPIs principales
+    k1,k2,k3,k4 = st.columns(4)
+    for col, lbl, val, color in [
+        (k1, "CAPITAL DEL DIA",  f"${capital:.2f}",          "#1a2940"),
+        (k2, "ENTRADA 1%",       f"${capital*0.01:.2f}",     "#16a34a"),
+        (k3, "ENTRADA 2%",       f"${capital*0.02:.2f}",     "#c8920a"),
+        (k4, "STOP LOSS DIARIO", f"${sl_monto:.2f} ({sl_pct}%)", "#dc2626"),
+    ]:
+        with col:
+            st.markdown(f'<div class="kpi"><div class="kpi-label">{lbl}</div><div class="kpi-value" style="color:{color};">{val}</div></div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="sec" style="margin-top:14px;">ESTADO DEL DIA</div>', unsafe_allow_html=True)
+
+    estado_txt = "🛑 STOP LOSS ALCANZADO — NO OPERAR" if perdida >= sl_monto else ("⚠️ RIESGO ALTO" if pct_usado >= 70 else "✅ CAPITAL OK — OPERAR")
+    estado_col = "#dc2626" if perdida >= sl_monto else ("#f97316" if pct_usado >= 70 else "#16a34a")
+    estado_bg  = "#fff0f0" if perdida >= sl_monto else ("#fffbf0" if pct_usado >= 70 else "#e8f9f0")
+
+    st.markdown(f"""
+    <div style="background:{estado_bg};border:2px solid {estado_col};border-radius:10px;padding:16px;margin-bottom:14px;">
+      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:22px;color:{estado_col};margin-bottom:8px;">{estado_txt}</div>
+      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a6080;margin-bottom:8px;">Perdida acumulada: ${perdida:.2f} de ${sl_monto:.2f} permitidos</div>
+      <div style="height:12px;background:#bdd4e8;border-radius:6px;overflow:hidden;">
+        <div style="height:100%;width:{pct_usado}%;background:{barra_col};border-radius:6px;transition:width 0.5s;"></div>
+      </div>
+      <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:{barra_col};margin-top:4px;">{pct_usado}% del stop loss usado</div>
+    </div>""", unsafe_allow_html=True)
+
+    st.markdown('<div class="sec">REGISTRAR RESULTADO DE OPERACION</div>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        monto_op = st.number_input("Monto operado $", min_value=1.0, max_value=float(capital), value=float(capital*0.02), step=1.0, key="monto_op_cap")
+    with c2:
+        resultado_op = st.selectbox("Resultado", ["—","WIN","LOSS"], key="res_op_cap")
+    with c3:
+        payout_pct = st.number_input("Payout %", min_value=50, max_value=100, value=80, step=1, key="payout_cap")
+
+    if resultado_op == "WIN":
+        ganancia = monto_op * payout_pct / 100
+        st.markdown(f'<div class="atr-ok"><b style="color:#16a34a;">GANANCIA: +${ganancia:.2f}</b></div>', unsafe_allow_html=True)
+        if st.button("Registrar WIN", key="reg_win_cap"):
+            # En wins reducimos la perdida acumulada si habia
+            if st.session_state.perdida_dia > 0:
+                st.session_state.perdida_dia = max(0, st.session_state.perdida_dia - ganancia)
+            st.rerun()
+    elif resultado_op == "LOSS":
+        st.markdown(f'<div class="atr-flat"><b style="color:#dc2626;">PERDIDA: -${monto_op:.2f}</b></div>', unsafe_allow_html=True)
+        if st.button("Registrar LOSS", key="reg_loss_cap"):
+            st.session_state.perdida_dia += monto_op
+            if st.session_state.perdida_dia >= sl_monto:
+                st.session_state.radar_bloqueado = True
+            st.rerun()
+
+    st.markdown('<div class="sec" style="margin-top:14px;">CALCULADORA DE ENTRADAS</div>', unsafe_allow_html=True)
+    cap_calc = st.number_input("Capital a calcular", min_value=10.0, value=float(capital), step=10.0, key="cap_calc")
+    for pct, label, color in [(1,"Entrada conservadora (1%)","#16a34a"),(2,"Entrada estandar (2%)","#c8920a"),(3,"Entrada agresiva (3%)","#dc2626"),(5,"Entrada max (5%)","#7c3aed")]:
+        monto = cap_calc * pct / 100
+        st.markdown(f'<div style="display:flex;justify-content:space-between;padding:8px 14px;background:#f0f6fc;border:1px solid #bdd4e8;border-radius:6px;margin-bottom:4px;"><span style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a6080;">{label}</span><span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:16px;color:{color};">${monto:.2f}</span></div>', unsafe_allow_html=True)
+
+    if st.button("Reset dia completo", key="reset_dia_cap"):
+        st.session_state.perdida_dia = 0.0
+        st.session_state.radar_bloqueado = False
+        st.rerun()
+
 # FOOTER
 # ================================================================
 st.markdown("""
 <div style="border-top:1px solid #bdd4e8;margin-top:24px;padding-top:10px;
 text-align:center;font-family:'Share Tech Mono',monospace;font-size:9px;color:#6a8aaa;letter-spacing:2px;">
-HECTOR PATTERN DETECTOR v4 · ATR · MACD · CONFLUENCIA · RANKING · HISTORIAL · TRACKER · 8 PATRONES · 6 ACTIVOS
+HECTOR PATTERN DETECTOR v5 · CAPITAL · AUTO-SCAN · SONIDO · SR · ATR · MACD · CONFLUENCIA · RANKING · 8 PATRONES · 6 ACTIVOS
 </div>""", unsafe_allow_html=True)
