@@ -472,7 +472,10 @@ with st.sidebar:
         if tg_ok and st.button("Enviar prueba", key="tg_prueba_btn"):
             ok = enviar_telegram(st.session_state.telegram_token, st.session_state.telegram_chat_id,
                 "✅ <b>Hector Pattern Detector v5</b> conectado!\n\nLas alertas con Score mayor a 80% llegaran aqui.")
-            st.success("Enviado!") if ok else st.error("Error al enviar")
+            if ok:
+                st.success("✅ Enviado! Revisá Telegram.")
+            else:
+                st.error("Error al enviar — verificá token y chat ID")
 
     # ── CAPITAL ──
     st.markdown("---")
