@@ -21,6 +21,7 @@ import numpy as np
 from datetime import datetime, timezone, date
 import requests
 import streamlit.components.v1 as components_v1
+import base64
 try:
     from streamlit_autorefresh import st_autorefresh
     AUTOREFRESH_OK = True
@@ -31,7 +32,7 @@ st.set_page_config(
     page_title="Hector Pattern Detector",
     page_icon="🔍",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"  # collapsed por defecto en iPhone
 )
 
 # ================================================================
@@ -120,24 +121,100 @@ html, body, .stApp { background:#e8f0f7 !important; }
 .scan-dot { width:8px; height:8px; border-radius:50%; animation:blink 1s infinite; display:inline-block; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
-@media (max-width:480px) {
-    .kpi-value { font-size:22px; }
-    .alert-card,.confluencia-card { padding:14px; }
-    .asset-row { flex-direction:column; align-items:flex-start; }
-    .rank-card { flex-direction:column; }
-}
-
+/* ── BOTONES GLOBALES ── */
 .stButton>button {
     background:#c8920a !important; color:#0f2035 !important;
-    border:none !important; border-radius:8px !important;
+    border:none !important; border-radius:12px !important;
     font-family:'Share Tech Mono',monospace !important;
-    font-size:11px !important; letter-spacing:1px !important; font-weight:700 !important;
+    font-size:13px !important; letter-spacing:1px !important; font-weight:700 !important;
+    padding:14px 20px !important; min-height:48px !important;
+    width:100% !important; touch-action:manipulation !important;
 }
-.stCheckbox label { color:#4a6080 !important; font-family:'Share Tech Mono',monospace !important; font-size:11px !important; }
+.stCheckbox label { color:#4a6080 !important; font-family:'Share Tech Mono',monospace !important; font-size:13px !important; }
+.stRadio label { color:#4a6080 !important; font-family:'Share Tech Mono',monospace !important; font-size:13px !important; }
+.stSelectbox label { color:#4a6080 !important; font-family:'Share Tech Mono',monospace !important; font-size:12px !important; }
 
 ::-webkit-scrollbar { width:4px; }
 ::-webkit-scrollbar-track { background:#ddeaf5; }
 ::-webkit-scrollbar-thumb { background:#7aaac8; border-radius:2px; }
+
+/* ── IPHONE / MOBILE OPTIMIZATION ── */
+@media (max-width:768px) {
+    /* Layout base */
+    html, body, .stApp { font-size:16px !important; }
+    [data-testid="stSidebar"] { display:none !important; }
+
+    /* Header compacto */
+    .hector-brand { padding:12px 10px !important; margin-bottom:8px !important; }
+    .hector-brand div:first-child { font-size:8px !important; }
+    .hector-brand div:nth-child(2) { font-size:20px !important; letter-spacing:2px !important; }
+    .hector-brand div:nth-child(3) { font-size:8px !important; }
+
+    /* Sesion bar */
+    .sesion-bar { padding:6px 10px !important; margin-bottom:8px !important; }
+
+    /* KPIs — 2 columnas en mobile */
+    .kpi { padding:10px 8px !important; }
+    .kpi-value { font-size:24px !important; }
+    .kpi-label { font-size:8px !important; letter-spacing:1px !important; }
+
+    /* Tabs — mas grandes para touch */
+    .stTabs [data-baseweb="tab"] {
+        font-size:9px !important; padding:12px 8px !important;
+        letter-spacing:0 !important;
+    }
+
+    /* Cards */
+    .alert-card, .confluencia-card { padding:12px !important; margin-bottom:10px !important; }
+    .asset-row { flex-direction:column !important; align-items:flex-start !important; padding:12px !important; }
+    .rank-card { flex-direction:row !important; padding:12px !important; }
+    .rank-num { font-size:24px !important; min-width:28px !important; }
+    .hist-item { flex-direction:column !important; align-items:flex-start !important; }
+
+    /* Botones touch-friendly */
+    .stButton>button {
+        font-size:15px !important; padding:16px 20px !important;
+        min-height:52px !important; border-radius:14px !important;
+        margin-bottom:6px !important;
+    }
+
+    /* Texto mas legible */
+    .sec { font-size:9px !important; letter-spacing:1px !important; }
+    .exp-badge { font-size:10px !important; padding:5px 12px !important; }
+    .conf-multi-badge { font-size:10px !important; padding:5px 12px !important; }
+
+    /* Inputs mas grandes */
+    input, select, textarea { font-size:16px !important; min-height:44px !important; }
+
+    /* Ocultar elementos no esenciales en mobile */
+    .rank-num { display:none !important; }
+}
+
+/* iPhone SE y pantallas muy pequenas */
+@media (max-width:380px) {
+    .kpi-value { font-size:20px !important; }
+    .stTabs [data-baseweb="tab"] { font-size:8px !important; padding:10px 5px !important; }
+}
+
+/* iPhone landscape */
+@media (max-width:768px) and (orientation:landscape) {
+    .hector-brand { padding:6px !important; }
+    .kpi { padding:6px !important; }
+    .kpi-value { font-size:18px !important; }
+}
+
+/* Botones de alerta — extra grandes en mobile */
+@media (max-width:768px) {
+    .btn-iphone {
+        display:block; width:100%; padding:18px;
+        font-size:16px; font-weight:700; border-radius:14px;
+        text-align:center; margin:6px 0; cursor:pointer;
+        touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+        border:none; font-family:'Share Tech Mono',monospace;
+    }
+    .btn-call { background:#16a34a; color:white; }
+    .btn-put  { background:#dc2626; color:white; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -754,8 +831,8 @@ wgJCgsM" type="audio/wav">
 # ================================================================
 # TABS
 # ================================================================
-tab_radar, tab_ranking, tab_alert, tab_hist, tab_tracker, tab_atr, tab_stats, tab_capital = st.tabs([
-    "RADAR","RANKING","ALERTAS","HISTORIAL","TRACKER","VOLATILIDAD ATR","ESTADISTICAS","CAPITAL"
+tab_radar, tab_ranking, tab_alert, tab_hist, tab_tracker, tab_atr, tab_stats, tab_capital, tab_confirmar = st.tabs([
+    "RADAR","RANKING","ALERTAS","HISTORIAL","TRACKER","VOLATILIDAD ATR","ESTADISTICAS","CAPITAL","📷 CONFIRMAR"
 ])
 
 # ── RADAR ──────────────────────────────────────
@@ -1291,6 +1368,138 @@ with tab_capital:
         st.session_state.perdida_dia = 0.0
         st.session_state.radar_bloqueado = False
         st.rerun()
+
+
+# ── CONFIRMAR CON IMAGEN ────────────────────────
+with tab_confirmar:
+    st.markdown('<div class="sec">📷 CONFIRMAR ENTRADA — ANALIZADOR DE GRAFICO</div>', unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style="background:#fff8e7;border:1px solid #c8920a;border-radius:10px;padding:14px 16px;margin-bottom:14px;">
+      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:16px;color:#c8920a;margin-bottom:6px;">Como usar</div>
+      <div style="font-size:13px;color:#4a6080;line-height:1.8;">
+      1. El detector encontro una alerta → ir a IQ Option<br>
+      2. Sacar captura de pantalla del grafico M15<br>
+      3. Subir la imagen aca<br>
+      4. La IA analiza el grafico y confirma ENTRAR o ESPERAR
+      </div>
+    </div>""", unsafe_allow_html=True)
+
+    if not st.session_state.api_key.startswith("sk-ant-"):
+        st.markdown('<div class="atr-flat"><b style="color:#dc2626;">Necesitas la clave API de Anthropic para usar esta funcion</b></div>', unsafe_allow_html=True)
+    else:
+        # Selector de activo y direccion esperada
+        c1, c2 = st.columns(2)
+        with c1:
+            activo_conf = st.selectbox("Activo de la alerta", list(ACTIVOS.keys()), key="act_conf")
+        with c2:
+            dir_conf = st.selectbox("Direccion esperada", ["ALCISTA (CALL)", "BAJISTA (PUT)"], key="dir_conf")
+
+        # Subir imagen
+        st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#5a7a99;margin:10px 0 4px;">SUBE LA CAPTURA DEL GRAFICO</div>', unsafe_allow_html=True)
+        img_file = st.file_uploader("Captura del grafico", type=["png","jpg","jpeg","webp"], key="img_upload", label_visibility="collapsed")
+
+        if img_file is not None:
+            # Mostrar imagen subida
+            st.image(img_file, caption="Grafico subido", use_column_width=True)
+
+            if st.button("ANALIZAR GRAFICO CON IA", key="btn_analizar_img"):
+                with st.spinner("La IA esta analizando el grafico..."):
+                    try:
+                        # Convertir imagen a base64
+                        img_bytes = img_file.read()
+                        img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+                        ext = img_file.name.split(".")[-1].lower()
+                        media_type = "image/jpeg" if ext in ("jpg","jpeg") else f"image/{ext}"
+
+                        # Obtener alertas activas para contexto
+                        alertas_ctx = ""
+                        if st.session_state.alertas:
+                            al_act = [a for a in st.session_state.alertas if a["activo"] == activo_conf]
+                            if al_act:
+                                a = al_act[0]
+                                alertas_ctx = f"El detector encontro: {a['patrones_nombres']} con score {a['conf']}% - {a['conf_label']}."
+
+                        dir_limpia = "CALL (alcista)" if "ALCISTA" in dir_conf else "PUT (bajista)"
+                        sys_p = f"""Eres el analista personal de Hector, trader de IQ Option en temporalidad M15.
+Hector esta considerando entrar {dir_limpia} en {activo_conf}.
+{alertas_ctx}
+Analiza el grafico que te mando y respondele:
+1. DECISION: ENTRAR / ESPERAR / NO ENTRAR (en grande, claro)
+2. Por que en 2-3 lineas maximo
+3. Que debe ver en el grafico para confirmar
+Se directo, sin rodeos. Maximo 100 palabras. En espanol."""
+
+                        response = requests.post(
+                            "https://api.anthropic.com/v1/messages",
+                            headers={
+                                "Content-Type": "application/json",
+                                "x-api-key": st.session_state.api_key,
+                                "anthropic-version": "2023-06-01"
+                            },
+                            json={
+                                "model": "claude-sonnet-4-20250514",
+                                "max_tokens": 300,
+                                "system": sys_p,
+                                "messages": [{
+                                    "role": "user",
+                                    "content": [
+                                        {
+                                            "type": "image",
+                                            "source": {
+                                                "type": "base64",
+                                                "media_type": media_type,
+                                                "data": img_b64
+                                            }
+                                        },
+                                        {
+                                            "type": "text",
+                                            "text": f"Analiza este grafico M15 de {activo_conf} y dime si entro {dir_limpia} ahora."
+                                        }
+                                    ]
+                                }]
+                            },
+                            timeout=45
+                        )
+
+                        if response.status_code == 200:
+                            resp_txt = response.json()["content"][0]["text"]
+
+                            # Determinar color segun decision
+                            if "ENTRAR" in resp_txt.upper() and "NO ENTRAR" not in resp_txt.upper():
+                                dec_col = "#16a34a"; dec_bg = "#e8f9f0"; dec_border = "#065f46"
+                                dec_icon = "🟢"
+                            elif "ESPERAR" in resp_txt.upper():
+                                dec_col = "#c8920a"; dec_bg = "#fff8e7"; dec_border = "#c8920a"
+                                dec_icon = "🟡"
+                            else:
+                                dec_col = "#dc2626"; dec_bg = "#fff0f0"; dec_border = "#991b1b"
+                                dec_icon = "🔴"
+
+                            st.markdown(f"""
+                            <div style="background:{dec_bg};border:2px solid {dec_border};border-radius:12px;padding:18px;margin-top:12px;">
+                              <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:28px;color:{dec_col};margin-bottom:10px;">{dec_icon} ANALISIS IA</div>
+                              <div style="font-size:14px;color:#1a2940;line-height:1.8;">{resp_txt.replace(chr(10),"<br>")}</div>
+                              <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;margin-top:10px;">{activo_conf} · {dir_conf} · {datetime.now().strftime("%H:%M")}</div>
+                            </div>""", unsafe_allow_html=True)
+                        else:
+                            st.error(f"Error API: {response.status_code} — {response.text[:200]}")
+
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
+
+        else:
+            # Instruccion visual cuando no hay imagen
+            st.markdown("""
+            <div style="text-align:center;padding:40px 20px;background:#f0f6fc;border:2px dashed #bdd4e8;border-radius:12px;margin-top:10px;">
+              <div style="font-size:48px;margin-bottom:12px;">📱</div>
+              <div style="font-family:Rajdhani,sans-serif;font-size:18px;color:#4a6080;margin-bottom:8px;">Subi la captura de IQ Option</div>
+              <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#5a7a99;line-height:1.8;">
+              iPhone: screenshot → compartir → subir aca<br>
+              Android: captura → galeria → subir aca
+              </div>
+            </div>""", unsafe_allow_html=True)
+
 
 # FOOTER
 # ================================================================
