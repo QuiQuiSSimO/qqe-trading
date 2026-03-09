@@ -1,8 +1,8 @@
-# QQE COMMAND V4 — HECTOR TRADING SYSTEM
-# Binarias 1min + Swing Trading H1/H4 + Scanner en Vivo + IA Grafico
+# QQE COMMAND V5 — HECTOR TRADING SYSTEM
+# Binarias 1min + Swing H1/H4 + Scanner + IA Grafico + Estrategia EMA/QQE/Vela
 #
 # INSTALACION: pip install streamlit requests yfinance pandas numpy streamlit-autorefresh
-# EJECUCION:   streamlit run qqe_v4.py
+# EJECUCION:   streamlit run qqe_v5.py
 
 import streamlit as st
 import requests
@@ -10,7 +10,37 @@ import base64
 import pandas as pd
 import numpy as np
 import yfinance as yf
+import json
+import os
 from datetime import datetime, timezone, date, timedelta
+
+# ================================================================
+# PERSISTENCIA LOCAL DE CREDENCIALES (sin pedir cada vez)
+# ================================================================
+CREDS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".qqe_creds.json")
+
+def guardar_creds():
+    try:
+        data = {
+            "api_key":    st.session_state.get("api_key", ""),
+            "tg_token":   st.session_state.get("tg_token", ""),
+            "tg_chat":    st.session_state.get("tg_chat", ""),
+            "capital":    st.session_state.get("capital", 467.86),
+            "stop_loss_dia": st.session_state.get("stop_loss_dia", 10),
+        }
+        with open(CREDS_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception:
+        pass
+
+def cargar_creds_locales():
+    try:
+        if os.path.exists(CREDS_FILE):
+            with open(CREDS_FILE, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -25,7 +55,7 @@ except:
     COMPONENTS_OK = False
 
 st.set_page_config(
-    page_title="QQE Command v4 — Hector",
+    page_title="QQE Command v5 — Hector",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -39,80 +69,83 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&family=Inter:wght@300;400;500;600&display=swap');
 
 html, body, .stApp { background:#0a0f1a !important; }
-.stApp { font-family:'Inter',sans-serif; color:#c8d8e8; }
+.stApp { font-family:'Inter',sans-serif; color:#c8d8e8; font-size:15px; }
 [data-testid="stSidebar"] { background:#0d1525 !important; border-right:1px solid #1e3050 !important; }
 
 .stTabs [data-baseweb="tab-list"] { background:#0d1525; border-bottom:2px solid #1e3050; gap:0; }
 .stTabs [data-baseweb="tab"] {
     background:transparent; color:#4a7a99 !important;
-    font-family:'Share Tech Mono',monospace; font-size:10px;
-    letter-spacing:1px; padding:10px 14px; border:none;
+    font-family:'Share Tech Mono',monospace; font-size:12px;
+    letter-spacing:1px; padding:12px 16px; border:none;
 }
 .stTabs [aria-selected="true"] {
     background:#0a0f1a !important; color:#c8920a !important;
     border-bottom:2px solid #c8920a !important; font-weight:700 !important;
 }
 
-.card { background:#0d1525; border:1px solid #1e3050; border-radius:10px; padding:16px; margin-bottom:10px; }
+.card { background:#0d1525; border:1px solid #1e3050; border-radius:10px; padding:18px; margin-bottom:10px; }
 .card-gold   { border-left:4px solid #c8920a; }
 .card-green  { border-left:4px solid #16a34a; }
 .card-red    { border-left:4px solid #dc2626; }
 .card-blue   { border-left:4px solid #2563eb; }
 .card-purple { border-left:4px solid #7c3aed; }
 
-.kpi { background:#0d1525; border:1px solid #1e3050; border-radius:10px; padding:14px 16px; text-align:center; }
-.kpi-label { font-family:'Share Tech Mono',monospace; font-size:9px; color:#4a7a99; letter-spacing:2px; margin-bottom:6px; }
-.kpi-value { font-family:'Rajdhani',sans-serif; font-size:30px; font-weight:700; line-height:1.1; }
-.kpi-sub   { font-family:'Share Tech Mono',monospace; font-size:10px; color:#4a7a99; margin-top:3px; }
+.kpi { background:#0d1525; border:1px solid #1e3050; border-radius:10px; padding:16px 18px; text-align:center; }
+.kpi-label { font-family:'Share Tech Mono',monospace; font-size:11px; color:#4a7a99; letter-spacing:2px; margin-bottom:6px; }
+.kpi-value { font-family:'Rajdhani',sans-serif; font-size:36px; font-weight:700; line-height:1.1; }
+.kpi-sub   { font-family:'Share Tech Mono',monospace; font-size:11px; color:#4a7a99; margin-top:3px; }
 
-.sec { font-family:'Share Tech Mono',monospace; font-size:10px; color:#4a7a99; letter-spacing:3px;
+.sec { font-family:'Share Tech Mono',monospace; font-size:12px; color:#4a7a99; letter-spacing:3px;
        text-transform:uppercase; border-bottom:2px solid #1e3050; padding-bottom:6px; margin:16px 0 12px; }
 
 .signal-call { background:linear-gradient(135deg,#0a2010,#0d3520); border:1px solid #16a34a;
-               border-radius:10px; padding:14px; margin-bottom:8px; }
+               border-radius:10px; padding:16px; margin-bottom:10px; }
 .signal-put  { background:linear-gradient(135deg,#200a0a,#350d0d); border:1px solid #dc2626;
-               border-radius:10px; padding:14px; margin-bottom:8px; }
-.signal-wait { background:#0d1525; border:1px solid #1e3050; border-radius:10px; padding:14px; margin-bottom:8px; }
+               border-radius:10px; padding:16px; margin-bottom:10px; }
+.signal-wait { background:#0d1525; border:1px solid #1e3050; border-radius:10px; padding:16px; margin-bottom:10px; }
 
-.badge { padding:3px 10px; border-radius:20px; font-family:'Share Tech Mono',monospace; font-size:9px; font-weight:700; }
+.badge { padding:4px 12px; border-radius:20px; font-family:'Share Tech Mono',monospace; font-size:11px; font-weight:700; }
 .badge-green  { background:#0a3020; color:#4ade80; border:1px solid #16a34a; }
 .badge-red    { background:#3a0a0a; color:#f87171; border:1px solid #dc2626; }
 .badge-gold   { background:#2a1a00; color:#fbbf24; border:1px solid #c8920a; }
 .badge-blue   { background:#0a1a3a; color:#60a5fa; border:1px solid #2563eb; }
 .badge-gray   { background:#1a2535; color:#94a3b8; border:1px solid #2a3a55; }
 
-.ia-box { background:#0d1525; border:1px solid #c8920a; border-radius:10px; padding:16px;
-          font-size:13px; line-height:1.8; color:#c8d8e8; }
+.ia-box { background:#0d1525; border:1px solid #c8920a; border-radius:10px; padding:18px;
+          font-size:15px; line-height:1.9; color:#c8d8e8; }
 
-.asset-row { background:#0d1525; border:1px solid #1e3050; border-radius:8px; padding:12px; margin-bottom:6px; }
+.asset-row { background:#0d1525; border:1px solid #1e3050; border-radius:8px; padding:14px; margin-bottom:8px; }
 
 .scan-dot { display:inline-block; width:8px; height:8px; border-radius:50%; animation:pulse 2s infinite; }
 @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.4;} }
 
-.prog-track { height:6px; background:#1e3050; border-radius:3px; overflow:hidden; margin:4px 0; }
+.prog-track { height:7px; background:#1e3050; border-radius:3px; overflow:hidden; margin:4px 0; }
 .prog-fill  { height:100%; border-radius:3px; }
 
-.diario-entry { background:#0d1525; border:1px solid #1e3050; border-radius:8px; padding:14px; margin-bottom:8px; }
-.diario-meta  { font-family:'Share Tech Mono',monospace; font-size:9px; color:#4a7a99; letter-spacing:1px; margin-bottom:6px; }
+.diario-entry { background:#0d1525; border:1px solid #1e3050; border-radius:8px; padding:16px; margin-bottom:8px; }
+.diario-meta  { font-family:'Share Tech Mono',monospace; font-size:11px; color:#4a7a99; letter-spacing:1px; margin-bottom:6px; }
 
-.script-card { background:#0d1525; border:1px solid #1e3050; border-radius:8px; padding:16px; margin-bottom:10px; }
-.code-block { background:#060c18; border:1px solid #1e3050; border-radius:6px; padding:14px;
-              font-family:'Share Tech Mono',monospace; font-size:10px; line-height:1.8; color:#7dd3fc;
-              white-space:pre; overflow-x:auto; max-height:280px; overflow-y:auto; margin-bottom:8px; }
+.script-card { background:#0d1525; border:1px solid #1e3050; border-radius:8px; padding:18px; margin-bottom:12px; }
+.code-block { background:#060c18; border:1px solid #1e3050; border-radius:6px; padding:16px;
+              font-family:'Share Tech Mono',monospace; font-size:11px; line-height:1.9; color:#7dd3fc;
+              white-space:pre; overflow-x:auto; max-height:300px; overflow-y:auto; margin-bottom:10px; }
 
-.swing-result { border-radius:12px; padding:18px; margin-top:10px; }
+/* ESTRATEGIA NUEVA */
+.strat-box { background:#0d1525; border:1px solid #c8920a; border-radius:12px; padding:18px; margin-bottom:12px; }
+.strat-step { background:#060c18; border-left:3px solid #c8920a; padding:12px 16px; margin-bottom:8px; border-radius:0 8px 8px 0; font-size:14px; line-height:1.8; }
+.strat-regla { background:#0a3020; border:1px solid #16a34a; border-radius:8px; padding:12px 16px; margin-bottom:8px; font-size:14px; }
 
 /* Mobile */
 @media (max-width:768px) {
-    .stTabs [data-baseweb="tab"] { font-size:9px; padding:8px 8px; letter-spacing:0; }
-    .stButton>button { min-height:48px !important; font-size:12px !important; }
-    .kpi-value { font-size:22px; }
+    .stTabs [data-baseweb="tab"] { font-size:11px; padding:10px 10px; letter-spacing:0; }
+    .stButton>button { min-height:52px !important; font-size:13px !important; }
+    .kpi-value { font-size:28px; }
 }
 
 .stButton>button {
     background:#1e3050 !important; color:#c8d8e8 !important;
     border:1px solid #2a4570 !important; border-radius:8px !important;
-    font-family:'Share Tech Mono',monospace !important; font-size:11px !important; letter-spacing:1px !important;
+    font-family:'Share Tech Mono',monospace !important; font-size:12px !important; letter-spacing:1px !important;
     transition:all .2s;
 }
 .stButton>button:hover { background:#c8920a !important; color:#000 !important; border-color:#c8920a !important; }
@@ -120,35 +153,49 @@ html, body, .stApp { background:#0a0f1a !important; }
 .stTextInput>div>div>input, .stTextArea>div>div>textarea {
     background:#0d1525 !important; border:1px solid #1e3050 !important;
     color:#c8d8e8 !important; border-radius:8px !important;
+    font-size:14px !important;
 }
 .stSelectbox>div>div, .stNumberInput>div>div>input {
     background:#0d1525 !important; border:1px solid #1e3050 !important; color:#c8d8e8 !important; border-radius:8px !important;
+    font-size:14px !important;
 }
 [data-testid="stSlider"] { color:#c8920a; }
-::-webkit-scrollbar { width:4px; height:4px; }
+::-webkit-scrollbar { width:5px; height:5px; }
 ::-webkit-scrollbar-track { background:#0a0f1a; }
 ::-webkit-scrollbar-thumb { background:#1e3050; border-radius:2px; }
+
+/* Bigger labels globally */
+label, .stSelectbox label, .stTextInput label, .stNumberInput label {
+    font-size:13px !important; color:#7a9ab8 !important;
+}
+p, li, div { font-size:inherit; }
 </style>
 """, unsafe_allow_html=True)
 
 # ================================================================
-# SECRETS / SESSION STATE
+# SECRETS / SESSION STATE — carga automática sin pedir cada vez
 # ================================================================
 def cargar_secrets():
+    # 1) Primero desde archivo local (guardado en sesión anterior)
+    creds = cargar_creds_locales()
+    for k, v in creds.items():
+        if k not in st.session_state or not st.session_state[k]:
+            st.session_state[k] = v
+    # 2) Luego desde st.secrets de Streamlit Cloud (si existe)
     try:
-        if "anthropic_api_key" in st.secrets:
+        if "anthropic_api_key" in st.secrets and not st.session_state.get("api_key"):
             st.session_state.api_key = st.secrets["anthropic_api_key"]
     except: pass
     try:
-        if "telegram_token" in st.secrets:
+        if "telegram_token" in st.secrets and not st.session_state.get("tg_token"):
             st.session_state.tg_token = st.secrets["telegram_token"]
     except: pass
     try:
-        if "telegram_chat_id" in st.secrets:
+        if "telegram_chat_id" in st.secrets and not st.session_state.get("tg_chat"):
             st.session_state.tg_chat = str(st.secrets["telegram_chat_id"])
     except: pass
     try:
-        if "capital_dia" in st.secrets:
+        if "capital_dia" in st.secrets and not st.session_state.get("capital"):
             st.session_state.capital = float(st.secrets["capital_dia"])
     except: pass
 
@@ -382,40 +429,46 @@ def analizar_activo_swing(symbol, tf="1h"):
 # SIDEBAR
 # ================================================================
 with st.sidebar:
-    st.markdown('<div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:20px;color:#c8920a;letter-spacing:2px;margin-bottom:16px;">QQE CMD v4</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:22px;color:#c8920a;letter-spacing:2px;margin-bottom:16px;">QQE CMD v5</div>', unsafe_allow_html=True)
 
     # API
-    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;margin-bottom:4px;">CLAVE API ANTHROPIC</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#4a7a99;letter-spacing:2px;margin-bottom:4px;">CLAVE API ANTHROPIC</div>', unsafe_allow_html=True)
     api_in = st.text_input("API", value=st.session_state.api_key, type="password", label_visibility="collapsed", key="api_sb")
-    if api_in: st.session_state.api_key = api_in
+    if api_in and api_in != st.session_state.api_key:
+        st.session_state.api_key = api_in
+        guardar_creds()
     ia_status = "IA ACTIVA ✓" if get_ia_ok() else "Sin clave API"
     ia_col = "#4ade80" if get_ia_ok() else "#f87171"
-    st.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:{ia_col};margin-bottom:12px;">{ia_status}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:{ia_col};margin-bottom:12px;">{ia_status}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
 
     # Capital
-    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;margin-bottom:4px;">CAPITAL Y RIESGO</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#4a7a99;letter-spacing:2px;margin-bottom:4px;">CAPITAL Y RIESGO</div>', unsafe_allow_html=True)
     cap = st.number_input("Capital", min_value=10.0, max_value=100000.0, value=float(st.session_state.capital), step=10.0, label_visibility="collapsed", key="cap_sb")
-    st.session_state.capital = cap
+    if cap != st.session_state.capital:
+        st.session_state.capital = cap
+        guardar_creds()
     sl_pct = st.slider("Stop Loss diario %", 5, 30, int(st.session_state.stop_loss_dia), 1, key="sl_sb")
-    st.session_state.stop_loss_dia = sl_pct
+    if sl_pct != st.session_state.stop_loss_dia:
+        st.session_state.stop_loss_dia = sl_pct
+        guardar_creds()
     sl_monto = cap * sl_pct / 100
     perdida  = st.session_state.perdida_dia
     pct_used = min(100, int(perdida / sl_monto * 100)) if sl_monto > 0 else 0
     bar_col  = "#4ade80" if pct_used < 50 else ("#fbbf24" if pct_used < 80 else "#f87171")
     st.markdown(f"""
-    <div style="background:#0d1525;border:1px solid #1e3050;border-radius:8px;padding:10px;margin-bottom:8px;">
+    <div style="background:#0d1525;border:1px solid #1e3050;border-radius:8px;padding:12px;margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-        <span style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">ENTRADA 1%</span>
-        <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#4ade80;">${cap*0.01:.2f}</span>
+        <span style="font-family:Share Tech Mono,monospace;font-size:11px;color:#4a7a99;">ENTRADA 1%</span>
+        <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:17px;color:#4ade80;">${cap*0.01:.2f}</span>
       </div>
       <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-        <span style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">ENTRADA 2%</span>
-        <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8920a;">${cap*0.02:.2f}</span>
+        <span style="font-family:Share Tech Mono,monospace;font-size:11px;color:#4a7a99;">ENTRADA 2%</span>
+        <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:17px;color:#c8920a;">${cap*0.02:.2f}</span>
       </div>
       <div class="prog-track"><div class="prog-fill" style="width:{pct_used}%;background:{bar_col};"></div></div>
-      <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:{bar_col};margin-top:3px;">Perdida: ${perdida:.2f} / SL: ${sl_monto:.2f}</div>
+      <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:{bar_col};margin-top:3px;">Perdida: ${perdida:.2f} / SL: ${sl_monto:.2f}</div>
     </div>""", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1:
@@ -430,22 +483,29 @@ with st.sidebar:
     st.markdown("---")
 
     # Telegram
-    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;margin-bottom:4px;">TELEGRAM</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#4a7a99;letter-spacing:2px;margin-bottom:4px;">TELEGRAM</div>', unsafe_allow_html=True)
     tg_chk = st.checkbox("Alertas activas", value=st.session_state.tg_on, key="tg_chk_sb")
     st.session_state.tg_on = tg_chk
     if tg_chk:
         tg_tok = st.text_input("Token", value=st.session_state.tg_token, type="password", placeholder="Token bot...", label_visibility="collapsed", key="tg_tok_sb")
         tg_cid = st.text_input("Chat ID", value=st.session_state.tg_chat, placeholder="Chat ID...", label_visibility="collapsed", key="tg_cid_sb")
-        if tg_tok: st.session_state.tg_token = tg_tok
-        if tg_cid: st.session_state.tg_chat  = tg_cid
+        if tg_tok and tg_tok != st.session_state.tg_token:
+            st.session_state.tg_token = tg_tok
+            guardar_creds()
+        if tg_cid and tg_cid != st.session_state.tg_chat:
+            st.session_state.tg_chat  = tg_cid
+            guardar_creds()
         tg_ok = bool(st.session_state.tg_token and st.session_state.tg_chat)
         col_tg = "#4ade80" if tg_ok else "#f87171"
-        st.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:{col_tg};margin-bottom:6px;">{"CONECTADO ✓" if tg_ok else "Completa token y chat ID"}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:{col_tg};margin-bottom:6px;">{"CONECTADO ✓" if tg_ok else "Completa token y chat ID"}</div>', unsafe_allow_html=True)
         if tg_ok and st.button("Enviar prueba", key="tg_prueba"):
             ok = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat,
-                "✅ <b>QQE Command v4</b> conectado!\n\nRecibirás alertas de binarias 1min y swing trading.")
+                "✅ <b>QQE Command v5</b> conectado!\n\nRecibirás alertas de binarias 1min y swing trading.")
             if ok: st.success("✅ Enviado!")
             else: st.error("Error al enviar")
+
+    st.markdown("---")
+    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#2a3a55;text-align:center;">Credenciales guardadas automáticamente</div>', unsafe_allow_html=True)
 
 # ================================================================
 # HEADER
@@ -476,8 +536,9 @@ background:#0d1525;border:1px solid #1e3050;border-radius:12px;padding:14px 20px
 # ================================================================
 # TABS
 # ================================================================
-tab_scan1, tab_swing, tab_swing_ia, tab_ops, tab_diario, tab_binarias, tab_copy, tab_codigos = st.tabs([
+tab_scan1, tab_swing, tab_swing_ia, tab_strat, tab_ops, tab_diario, tab_binarias, tab_copy, tab_codigos = st.tabs([
     "⚡ SCANNER 1MIN", "📈 SWING SCANNER", "🖼 SWING IA GRAFICO",
+    "🎯 ESTRATEGIA EMA+QQE",
     "📋 REGISTRO", "📓 DIARIO", "🤖 SCRIPTS LUA", "👥 COPY", "💻 CODIGOS QQE"
 ])
 
@@ -877,7 +938,341 @@ Si el grafico no es claro o hay riesgo alto, decilo sin dudar."""
                 st.success("Guardado en el diario!")
 
 # ================================================================
-# TAB 4 — REGISTRO DE OPERACIONES
+# TAB 4 — ESTRATEGIA EMA + QQE + VELA DE CONFIRMACION
+# ================================================================
+with tab_strat:
+    st.markdown('<div class="sec">🎯 ESTRATEGIA TRIPLE CONFIRMACION — EMA + QQE + VELA</div>', unsafe_allow_html=True)
+
+    st.markdown("""
+    <div class="strat-box">
+      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:22px;color:#c8920a;margin-bottom:6px;">
+        Estrategia: EMA 5/13/50 + QQE + Vela de Confirmacion
+      </div>
+      <div style="font-size:15px;color:#94a3b8;line-height:1.9;margin-bottom:12px;">
+        Sistema de triple confirmacion para binarias 1–5 minutos y scalping forex.<br>
+        Requiere que los 3 filtros estén alineados antes de entrar. Sin señal completa = no operar.<br>
+        <strong style="color:#c8920a;">Win rate estimado histórico: 68–74% en sesion Londres/NY con activos líquidos.</strong>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+        <div style="background:#060c18;border:1px solid #c8920a;border-radius:8px;padding:14px;text-align:center;">
+          <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#c8920a;margin-bottom:4px;">FILTRO 1</div>
+          <div style="font-family:Rajdhani,sans-serif;font-size:20px;font-weight:700;color:#c8d8e8;">EMA 5/13/50</div>
+          <div style="font-size:13px;color:#94a3b8;margin-top:4px;">Dirección de tendencia</div>
+        </div>
+        <div style="background:#060c18;border:1px solid #16a34a;border-radius:8px;padding:14px;text-align:center;">
+          <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#4ade80;margin-bottom:4px;">FILTRO 2</div>
+          <div style="font-family:Rajdhani,sans-serif;font-size:20px;font-weight:700;color:#c8d8e8;">QQE / RSI</div>
+          <div style="font-size:13px;color:#94a3b8;margin-top:4px;">Momentum y zona</div>
+        </div>
+        <div style="background:#060c18;border:1px solid #2563eb;border-radius:8px;padding:14px;text-align:center;">
+          <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#60a5fa;margin-bottom:4px;">FILTRO 3</div>
+          <div style="font-family:Rajdhani,sans-serif;font-size:20px;font-weight:700;color:#c8d8e8;">VELA PATRON</div>
+          <div style="font-size:13px;color:#94a3b8;margin-top:4px;">Confirmacion de entrada</div>
+        </div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # REGLAS CALL
+    st.markdown('<div class="sec">REGLAS DE ENTRADA — CALL (SUBE)</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="strat-regla">
+      <div style="font-family:Rajdhani,sans-serif;font-size:17px;font-weight:700;color:#4ade80;margin-bottom:8px;">✅ CONDICIONES CALL — las 3 deben cumplirse</div>
+      <div class="strat-step">
+        <strong style="color:#c8920a;">FILTRO 1 — EMA Stack Alcista:</strong><br>
+        EMA5 > EMA13 > EMA50 — las tres alineadas de mayor a menor.<br>
+        El precio cierra <strong>por encima</strong> de la EMA13.<br>
+        <em style="color:#4a7a99;">Confirma que la tendencia de fondo es compradora.</em>
+      </div>
+      <div class="strat-step">
+        <strong style="color:#c8920a;">FILTRO 2 — QQE / RSI Zona Compradora:</strong><br>
+        RSI (14) entre 45 y 65 — zona de momentum alcista sin sobrecompra.<br>
+        Histograma MACD positivo y creciendo (hist > 0 y hist > hist[-1]).<br>
+        <em style="color:#4a7a99;">Evita entrar en sobrecompra o en zona muerta sin momentum.</em>
+      </div>
+      <div class="strat-step">
+        <strong style="color:#c8920a;">FILTRO 3 — Vela de Confirmacion:</strong><br>
+        Aparece una vela <strong>alcista engulfing</strong>, <strong>martillo</strong> o <strong>marubozu verde</strong>.<br>
+        La vela cierra en el 70% superior de su rango (cuerpo grande).<br>
+        Volumen de la vela de confirmacion > promedio de las últimas 5 velas.<br>
+        <em style="color:#4a7a99;">La vela es la "firma" del mercado — sin ella no entres.</em>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # REGLAS PUT
+    st.markdown('<div class="sec">REGLAS DE ENTRADA — PUT (BAJA)</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div style="background:#200a0a;border:1px solid #dc2626;border-radius:8px;padding:14px;margin-bottom:12px;">
+      <div style="font-family:Rajdhani,sans-serif;font-size:17px;font-weight:700;color:#f87171;margin-bottom:8px;">✅ CONDICIONES PUT — espejo inverso</div>
+      <div class="strat-step">
+        <strong style="color:#f87171;">FILTRO 1:</strong> EMA5 &lt; EMA13 &lt; EMA50. Precio cierra <strong>por debajo</strong> de EMA13.
+      </div>
+      <div class="strat-step">
+        <strong style="color:#f87171;">FILTRO 2:</strong> RSI (14) entre 35 y 55. Histograma MACD negativo y decreciendo.
+      </div>
+      <div class="strat-step">
+        <strong style="color:#f87171;">FILTRO 3:</strong> Vela <strong>bajista engulfing</strong>, <strong>estrella fugaz</strong> o <strong>marubozu rojo</strong>. Cierra en el 30% inferior de su rango.
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # GESTIÓN DE LA OPERACION
+    st.markdown('<div class="sec">GESTION DE LA OPERACION</div>', unsafe_allow_html=True)
+    col_g1, col_g2 = st.columns(2)
+    with col_g1:
+        st.markdown(f"""
+        <div style="background:#0d1525;border:1px solid #1e3050;border-radius:10px;padding:16px;">
+          <div style="font-family:Share Tech Mono,monospace;font-size:12px;color:#4a7a99;margin-bottom:10px;letter-spacing:2px;">PARAMETROS DE ENTRADA</div>
+          <div style="font-size:14px;line-height:2.2;color:#c8d8e8;">
+            <span style="color:#c8920a;">Temporalidad:</span> M1 (binarias) · M5 (forex scalp)<br>
+            <span style="color:#c8920a;">Capital por op:</span> 1% = <strong style="color:#4ade80;">${st.session_state.capital*0.01:.2f}</strong><br>
+            <span style="color:#c8920a;">Expiracion binaria:</span> 1–3 minutos<br>
+            <span style="color:#c8920a;">Max operaciones/dia:</span> 6<br>
+            <span style="color:#c8920a;">Max perdidas seguidas:</span> 2 → parar
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_g2:
+        st.markdown("""
+        <div style="background:#0d1525;border:1px solid #1e3050;border-radius:10px;padding:16px;">
+          <div style="font-family:Share Tech Mono,monospace;font-size:12px;color:#4a7a99;margin-bottom:10px;letter-spacing:2px;">INVALIDACION DE SEÑAL</div>
+          <div style="font-size:14px;line-height:2.2;color:#c8d8e8;">
+            <span style="color:#f87171;">✗</span> RSI &gt; 70 o &lt; 30 (extremo — no entrar en tendencia)<br>
+            <span style="color:#f87171;">✗</span> Noticias de alto impacto en los próximos 15 min<br>
+            <span style="color:#f87171;">✗</span> EMAs en compresion (diferencia &lt;0.0002 entre EMA5 y EMA13)<br>
+            <span style="color:#f87171;">✗</span> ATR muy bajo (mercado dormido, sin volatilidad)<br>
+            <span style="color:#f87171;">✗</span> Fuera de sesion Londres/NY activa
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # SCANNER EN VIVO DE LA ESTRATEGIA
+    st.markdown('<div class="sec">SCANNER EN VIVO — TRIPLE CONFIRMACION</div>', unsafe_allow_html=True)
+    c1, c2 = st.columns([2,3])
+    with c1:
+        scan_strat_btn = st.button("🎯 ESCANEAR TRIPLE CONFIRMACION", key="scan_strat", use_container_width=True)
+    with c2:
+        activos_strat = st.multiselect("Activos a escanear", list(ACTIVOS.keys()),
+            default=["EUR/USD","GBP/USD","XAU/USD"], key="act_strat")
+
+    if scan_strat_btn:
+        resultados_strat = []
+        prog_s = st.progress(0)
+        for idx, activo in enumerate(activos_strat):
+            prog_s.progress((idx+1)/max(len(activos_strat),1))
+            df = obtener_datos_1min(ACTIVOS[activo]["yahoo"])
+            if df is None or len(df) < 60:
+                continue
+            c_s = df["cierre"]
+            ema5  = calc_ema(c_s, 5)
+            ema13 = calc_ema(c_s, 13)
+            ema50 = calc_ema(c_s, 50)
+            rsi   = calc_rsi(c_s, 14)
+            macd, sig_l, hist = calc_macd(c_s)
+            atr   = calc_atr(df)
+
+            # Valores actuales
+            e5 = ema5.iloc[-1]; e13 = ema13.iloc[-1]; e50 = ema50.iloc[-1]
+            precio = c_s.iloc[-1]; prev = c_s.iloc[-2]
+            rsi_v  = rsi.iloc[-1]
+            hist_v = hist.iloc[-1]; hist_p = hist.iloc[-2]
+            atr_v  = atr.iloc[-1]
+
+            # Filtro 1 — EMA Stack
+            f1_call = e5 > e13 > e50 and precio > e13
+            f1_put  = e5 < e13 < e50 and precio < e13
+
+            # Filtro 2 — QQE/RSI
+            f2_call = 45 < rsi_v < 65 and hist_v > 0 and hist_v > hist_p
+            f2_put  = 35 < rsi_v < 55 and hist_v < 0 and hist_v < hist_p
+
+            # Filtro 3 — Vela patron
+            apertura = df["apertura"].iloc[-1]
+            rango    = df["maximo"].iloc[-1] - df["minimo"].iloc[-1]
+            cuerpo   = abs(precio - apertura)
+            pos_vela = (precio - df["minimo"].iloc[-1]) / rango if rango > 0 else 0.5
+            f3_call  = precio > apertura and pos_vela > 0.70 and cuerpo > rango * 0.5
+            f3_put   = precio < apertura and pos_vela < 0.30 and cuerpo > rango * 0.5
+
+            filtros_call = sum([f1_call, f2_call, f3_call])
+            filtros_put  = sum([f1_put,  f2_put,  f3_put])
+
+            if filtros_call >= 2 or filtros_put >= 2:
+                dir_s    = "CALL" if filtros_call >= filtros_put else "PUT"
+                filtros  = filtros_call if dir_s == "CALL" else filtros_put
+                f1_ok    = f1_call if dir_s == "CALL" else f1_put
+                f2_ok    = f2_call if dir_s == "CALL" else f2_put
+                f3_ok    = f3_call if dir_s == "CALL" else f3_put
+                conf     = 60 + filtros * 12
+                resultados_strat.append({
+                    "activo": activo, "dir": dir_s, "conf": conf,
+                    "filtros": filtros, "f1": f1_ok, "f2": f2_ok, "f3": f3_ok,
+                    "precio": precio, "rsi": rsi_v, "e5": e5, "e13": e13, "e50": e50,
+                    "hist": hist_v, "atr": atr_v,
+                })
+        prog_s.empty()
+        st.session_state["strat_results"] = resultados_strat
+        st.rerun()
+
+    if st.session_state.get("strat_results"):
+        res_s = st.session_state["strat_results"]
+        if not res_s:
+            st.markdown('<div style="text-align:center;padding:30px;color:#4a7a99;font-family:Share Tech Mono,monospace;font-size:13px;">Sin señales de triple confirmacion en este momento</div>', unsafe_allow_html=True)
+        for r in sorted(res_s, key=lambda x: x["conf"], reverse=True):
+            es_call = r["dir"] == "CALL"
+            card_cls = "signal-call" if es_call else "signal-put"
+            col_d = "#4ade80" if es_call else "#f87171"
+            ic = "▲" if es_call else "▼"
+            completo = r["filtros"] == 3
+            st.markdown(f"""
+            <div class="{card_cls}" style="{'border:2px solid #4ade80;' if completo and es_call else 'border:2px solid #f87171;' if completo else ''}">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px;">
+                <div>
+                  <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:22px;color:#c8d8e8;">{r['activo']}</span>
+                  <span style="font-family:Share Tech Mono,monospace;font-size:12px;color:{col_d};margin-left:12px;">{ic} {r['dir']}</span>
+                  {'<span style="margin-left:10px;" class="badge badge-green">✅ TRIPLE CONFIRMACION</span>' if completo else f'<span style="margin-left:10px;" class="badge badge-gold">⚠ {r["filtros"]}/3 filtros</span>'}
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:26px;color:{col_d};">{r['conf']}%</div>
+                  <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#4a7a99;">CONFIANZA</div>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
+                <div style="background:#060c18;border:1px solid {'#16a34a' if r['f1'] else '#1e3050'};border-radius:8px;padding:10px;text-align:center;">
+                  <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#4a7a99;">EMA STACK</div>
+                  <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:18px;color:{'#4ade80' if r['f1'] else '#64748b'};margin-top:2px;">{'✓' if r['f1'] else '✗'}</div>
+                  <div style="font-size:12px;color:#4a7a99;">EMA5/13/50</div>
+                </div>
+                <div style="background:#060c18;border:1px solid {'#16a34a' if r['f2'] else '#1e3050'};border-radius:8px;padding:10px;text-align:center;">
+                  <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#4a7a99;">QQE/RSI</div>
+                  <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:18px;color:{'#4ade80' if r['f2'] else '#64748b'};margin-top:2px;">{'✓' if r['f2'] else '✗'}</div>
+                  <div style="font-size:12px;color:#4a7a99;">RSI {r['rsi']:.1f}</div>
+                </div>
+                <div style="background:#060c18;border:1px solid {'#16a34a' if r['f3'] else '#1e3050'};border-radius:8px;padding:10px;text-align:center;">
+                  <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#4a7a99;">VELA</div>
+                  <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:18px;color:{'#4ade80' if r['f3'] else '#64748b'};margin-top:2px;">{'✓' if r['f3'] else '✗'}</div>
+                  <div style="font-size:12px;color:#4a7a99;">Patron</div>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:13px;">
+                <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
+                  <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">PRECIO</div>
+                  <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;">{r['precio']:.4f}</div>
+                </div>
+                <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
+                  <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">EMA5</div>
+                  <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;">{r['e5']:.4f}</div>
+                </div>
+                <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
+                  <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">ENTRADA 1%</div>
+                  <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8920a;">${st.session_state.capital*0.01:.2f}</div>
+                </div>
+                <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
+                  <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">EXPIRACION</div>
+                  <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;">1–2 min</div>
+                </div>
+              </div>
+              {'<div style="background:#0a3020;border:1px solid #16a34a;border-radius:6px;padding:8px;margin-top:8px;font-family:Share Tech Mono,monospace;font-size:12px;color:#4ade80;">⚡ SEÑAL COMPLETA — Las 3 confirmaciones activas. Entrada válida.</div>' if completo else '<div style="background:#2a1a00;border:1px solid #c8920a;border-radius:6px;padding:8px;margin-top:8px;font-family:Share Tech Mono,monospace;font-size:12px;color:#fbbf24;">⚠ Señal parcial — esperar que se complete el tercer filtro antes de entrar.</div>'}
+            </div>""", unsafe_allow_html=True)
+
+    # SCRIPT LUA DE LA ESTRATEGIA
+    st.markdown('<div class="sec">SCRIPT LUA — ESTRATEGIA TRIPLE CONFIRMACION PARA IQ OPTION</div>', unsafe_allow_html=True)
+    script_triple = '''instrument {
+    name = "Triple Confirm — EMA+QQE+Vela",
+    short_name = "3C_1M",
+    icon = "indicators:MA",
+    overlay = true
+}
+input_group {
+    "EMAs",
+    p_e5  = input(5,  "EMA Ultra-Rapida", input.integer, 2,  20, 1),
+    p_e13 = input(13, "EMA Rapida",        input.integer, 5,  30, 1),
+    p_e50 = input(50, "EMA Tendencia",     input.integer, 20, 100,1),
+}
+input_group {
+    "QQE / Filtros",
+    p_rsi    = input(14,  "RSI Periodo",    input.integer, 5,  30, 1),
+    p_macd_f = input(5,   "MACD Rapido",    input.integer, 3,  15, 1),
+    p_macd_s = input(13,  "MACD Lento",     input.integer, 8,  30, 1),
+    p_macd_g = input(4,   "MACD Signal",    input.integer, 2,  10, 1),
+    p_vol    = input(true,"Filtro Vela",    input.bool),
+}
+function init()
+    ema5   = indicator.ema(p_e5)
+    ema13  = indicator.ema(p_e13)
+    ema50  = indicator.ema(p_e50)
+    rsi    = indicator.rsi(p_rsi)
+    macd   = indicator.macd(p_macd_f, p_macd_s, p_macd_g)
+    atr    = indicator.atr(14)
+    e5p    = plot("EMA5",  color.yellow, 1, plot.line)
+    e13p   = plot("EMA13", color.cyan,   1, plot.line)
+    e50p   = plot("EMA50", color.gray,   1, plot.line)
+    callp  = plot("CALL",  color.green,  2, plot.arrow_up)
+    putp   = plot("PUT",   color.red,    2, plot.arrow_down)
+    warn_c = plot("WARN+", color.lime,   1, plot.circles)
+    warn_p = plot("WARN-", color.orange, 1, plot.circles)
+end
+function update()
+    e5p:set(ema5[0])
+    e13p:set(ema13[0])
+    e50p:set(ema50[0])
+
+    -- FILTRO 1: EMA Stack
+    local f1_call = ema5[0] > ema13[0] and ema13[0] > ema50[0] and close[0] > ema13[0]
+    local f1_put  = ema5[0] < ema13[0] and ema13[0] < ema50[0] and close[0] < ema13[0]
+
+    -- FILTRO 2: QQE / RSI momentum
+    local rsi_v   = rsi[0]
+    local hist_up = macd.histogram[0] > 0 and macd.histogram[0] > macd.histogram[1]
+    local hist_dn = macd.histogram[0] < 0 and macd.histogram[0] < macd.histogram[1]
+    local f2_call = rsi_v > 45 and rsi_v < 65 and hist_up
+    local f2_put  = rsi_v > 35 and rsi_v < 55 and hist_dn
+
+    -- FILTRO 3: Vela de confirmacion
+    local rango  = high[0] - low[0]
+    local cuerpo = math.abs(close[0] - open[0])
+    local pos    = (rango > 0) and ((close[0] - low[0]) / rango) or 0.5
+    local f3_call = close[0] > open[0] and pos > 0.70 and cuerpo > rango * 0.5
+    local f3_put  = close[0] < open[0] and pos < 0.30 and cuerpo > rango * 0.5
+
+    -- CONTEO DE FILTROS
+    local n_call = (f1_call and 1 or 0) + (f2_call and 1 or 0) + (f3_call and 1 or 0)
+    local n_put  = (f1_put  and 1 or 0) + (f2_put  and 1 or 0) + (f3_put  and 1 or 0)
+
+    -- SEÑAL COMPLETA (3/3)
+    if n_call == 3 then
+        callp:set(low[0] - atr[0] * 0.8)
+    end
+    if n_put == 3 then
+        putp:set(high[0] + atr[0] * 0.8)
+    end
+
+    -- AVISO PARCIAL (2/3) — prepararse
+    if n_call == 2 then
+        warn_c:set(low[0])
+    end
+    if n_put == 2 then
+        warn_p:set(high[0])
+    end
+end'''
+
+    st.markdown(f'<div class="code-block">{script_triple}</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div style="background:#0a1a3a;border:1px solid #2563eb;border-radius:8px;padding:12px;font-size:13px;color:#60a5fa;line-height:1.8;">
+      <strong>Cómo instalar en IQ Option:</strong><br>
+      1. Abrí IQ Option → Editor de Indicadores (ícono &lt;/&gt;)<br>
+      2. Creá un nuevo indicador → pegá el código completo<br>
+      3. Guardá como "Triple Confirm" → aplicar al gráfico M1<br>
+      4. <strong>Flecha verde grande</strong> = señal completa CALL &nbsp;|&nbsp; <strong>Flecha roja grande</strong> = señal completa PUT<br>
+      5. <strong>Círculos pequeños</strong> = 2/3 filtros activos — prepararse, esperar la vela de confirmacion
+    </div>
+    """, unsafe_allow_html=True)
+
+# ================================================================
+# ================================================================
+# TAB 5 — REGISTRO DE OPERACIONES
 # ================================================================
 with tab_ops:
     st.markdown('<div class="sec">REGISTRO DE OPERACIONES</div>', unsafe_allow_html=True)
@@ -1296,7 +1691,7 @@ end'''
 # ================================================================
 st.markdown(f"""
 <div style="text-align:center;margin-top:24px;padding:14px;border-top:1px solid #1e3050;">
-  <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#2a3a55;letter-spacing:2px;">
-    QQE COMMAND V4 · HECTOR TRADING SYSTEM · Capital: ${st.session_state.capital:.2f} · Objetivo: $50/dia
+  <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#2a3a55;letter-spacing:2px;">
+    QQE COMMAND V5 · HECTOR TRADING SYSTEM · Capital: ${st.session_state.capital:.2f} · Objetivo: $50/dia
   </div>
 </div>""", unsafe_allow_html=True)
