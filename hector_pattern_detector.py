@@ -153,6 +153,29 @@ def enviar_telegram(token, chat_id, mensaje):
     except:
         return False
 
+
+# ================================================================
+# SECRETS — carga automatica desde Streamlit Cloud
+# ================================================================
+def cargar_secrets():
+    """Carga API key, Telegram y capital desde st.secrets si existen"""
+    try:
+        if "anthropic_api_key" in st.secrets:
+            st.session_state.api_key = st.secrets["anthropic_api_key"]
+    except: pass
+    try:
+        if "telegram_token" in st.secrets:
+            st.session_state.telegram_token = st.secrets["telegram_token"]
+    except: pass
+    try:
+        if "telegram_chat_id" in st.secrets:
+            st.session_state.telegram_chat_id = str(st.secrets["telegram_chat_id"])
+    except: pass
+    try:
+        if "capital_dia" in st.secrets:
+            st.session_state.capital_dia = float(st.secrets["capital_dia"])
+    except: pass
+
 # ================================================================
 # SESSION STATE
 # ================================================================
@@ -171,13 +194,22 @@ defaults = {
     "radar_bloqueado": False,
     "telegram_token": "",
     "telegram_chat_id": "",
-    "telegram_on": False,
+    "telegram_on": False,  # se activa automaticamente si hay secrets
     "tg_enviadas": set(),
     "ultima_alerta_sonido": "",
+    "autorefresh_on": False,
+    "autorefresh_min": 5,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
+
+# Cargar secrets de Streamlit Cloud (si existen)
+cargar_secrets()
+# Auto-activar Telegram si hay token y chat_id cargados
+if st.session_state.get("telegram_token") and st.session_state.get("telegram_chat_id"):
+    st.session_state.telegram_on = True
+
 
 # ================================================================
 # ACTIVOS
@@ -470,6 +502,23 @@ with st.sidebar:
     confianza_min = st.slider("Confianza minima %", 50, 80, 63, 1)
     solo_confluencia = st.checkbox("Solo mostrar confluencias", value=False)
 
+    # ── AUTO-SCAN ──
+    st.markdown("---")
+    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;letter-spacing:2px;margin-bottom:6px;">AUTO-SCAN</div>', unsafe_allow_html=True)
+    ar_on = st.checkbox("Escaneo automatico", value=st.session_state.get("autorefresh_on", False), key="ar_on_chk")
+    st.session_state.autorefresh_on = ar_on
+    if ar_on:
+        ar_min = st.selectbox("Frecuencia", [1, 5, 10, 15], index=1, key="ar_min_sel", format_func=lambda x: f"Cada {x} minutos")
+        st.session_state.autorefresh_min = ar_min
+        if AUTOREFRESH_OK:
+            st_autorefresh(interval=ar_min * 60 * 1000, key="autorefresh_main")
+        else:
+            # Fallback: meta-refresh via HTML
+            import time as _time
+            ms = ar_min * 60 * 1000
+            components_v1.html(f"<script>setTimeout(function(){{window.location.reload();}},{ms});</script>", height=0)
+        st.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#34d399;margin-top:4px;">● SCAN ACTIVO — cada {ar_min} min</div>', unsafe_allow_html=True)
+
     # ── TELEGRAM ──
     st.markdown("---")
     st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#5a7a99;letter-spacing:2px;margin-bottom:6px;">NOTIFICACIONES TELEGRAM</div>', unsafe_allow_html=True)
@@ -574,21 +623,35 @@ st.markdown(f"""
   <span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#5a7a99;">{hora_utc}</span>
 </div>""", unsafe_allow_html=True)
 
-# Boton escanear
-col_btn, col_est = st.columns([1,3])
-with col_btn:
-    escanear = st.button("ESCANEAR MERCADO", key="btn_scan")
-with col_est:
-    if st.session_state.ultimo_scan:
-        n_conf = len([a for a in st.session_state.alertas if a.get("n_patrones",1)>=2])
-        nc = "#34d399" if st.session_state.alertas else "#475569"
-        st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
-          <span class="scan-dot" style="background:#34d399;"></span>
-          <span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#5a7a99;">Ultimo: {st.session_state.ultimo_scan}</span>
-          <span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:{nc};">{len(st.session_state.alertas)} alertas</span>
-          {f'<span style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:#c8920a;">{n_conf} confluencias</span>' if n_conf>0 else ''}
-        </div>""", unsafe_allow_html=True)
-    else:
+# ── AUTO-SCAN EN PANTALLA PRINCIPAL ──
+with st.container():
+    c_scan1, c_scan2, c_scan3 = st.columns([2, 2, 3])
+    with c_scan1:
+        escanear = st.button("⚡ ESCANEAR AHORA", key="btn_scan", use_container_width=True)
+    with c_scan2:
+        ar_on_main = st.toggle("Auto-scan", value=st.session_state.get("autorefresh_on", False), key="ar_toggle_main")
+        st.session_state.autorefresh_on = ar_on_main
+    with c_scan3:
+        if ar_on_main:
+            ar_min_main = st.select_slider("", options=[1, 5, 10, 15], value=st.session_state.get("autorefresh_min", 5), key="ar_slider_main", format_func=lambda x: f"Cada {x} min")
+            st.session_state.autorefresh_min = ar_min_main
+            if AUTOREFRESH_OK:
+                st_autorefresh(interval=ar_min_main * 60 * 1000, key="autorefresh_main")
+            st.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#34d399;">● ACTIVO — cada {ar_min_main} min</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#5a7a99;margin-top:8px;">Auto-scan desactivado</div>', unsafe_allow_html=True)
+
+# Estado del ultimo scan
+if st.session_state.ultimo_scan:
+    n_conf = len([a for a in st.session_state.alertas if a.get("n_patrones",1)>=2])
+    nc = "#34d399" if st.session_state.alertas else "#475569"
+    st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap;">
+      <span class="scan-dot" style="background:#34d399;"></span>
+      <span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#5a7a99;">Ultimo: {st.session_state.ultimo_scan}</span>
+      <span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:{nc};">{len(st.session_state.alertas)} alertas</span>
+      {f'<span style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:#c8920a;">{n_conf} confluencias</span>' if n_conf>0 else ''}
+    </div>""", unsafe_allow_html=True)
+else:
         st.markdown('<div style="margin-top:8px;font-family:\'Share Tech Mono\',monospace;font-size:10px;color:#5a7a99;">Presiona ESCANEAR para analizar el mercado</div>', unsafe_allow_html=True)
 
 # ================================================================
