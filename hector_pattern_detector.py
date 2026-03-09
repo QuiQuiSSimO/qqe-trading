@@ -210,6 +210,10 @@ cargar_secrets()
 if st.session_state.get("telegram_token") and st.session_state.get("telegram_chat_id"):
     st.session_state.telegram_on = True
 
+# ia_ok global — siempre fresco, disponible en todo el codigo
+def get_ia_ok():
+    return st.session_state.get("api_key","").startswith("sk-ant-")
+
 
 # ================================================================
 # ACTIVOS
@@ -1066,7 +1070,7 @@ with tab_alert:
                         </div>""", unsafe_allow_html=True)
 
                 # Boton IA individual con escaneo en vivo
-                if ia_ok:
+                if get_ia_ok():
                     ia_key = f"ia_individual_{i}"
                     ia_resp_key = f"ia_resp_{i}"
                     if ia_resp_key not in st.session_state:
@@ -1141,8 +1145,9 @@ Capital de Hector: ${st.session_state.get('capital_dia', 467.86):.2f} | Entrada 
 
 Dime: ¿Entra ahora o espera?"""
 
+                                api_key_live = st.session_state.get("api_key","")
                                 r = requests.post("https://api.anthropic.com/v1/messages",
-                                    headers={"Content-Type":"application/json","x-api-key":st.session_state.api_key,"anthropic-version":"2023-06-01"},
+                                    headers={"Content-Type":"application/json","x-api-key":api_key_live,"anthropic-version":"2023-06-01"},
                                     json={"model":"claude-sonnet-4-20250514","max_tokens":250,"system":sys_p,
                                           "messages":[{"role":"user","content":prompt}]}, timeout=30)
 
@@ -1191,7 +1196,7 @@ Dime: ¿Entra ahora o espera?"""
                         st.rerun()
 
         # Analisis IA general
-        if ia_ok:
+        if get_ia_ok():
             st.markdown("---")
             if st.button("ANALIZAR TODAS LAS ALERTAS CON IA", key="ia_al"):
                 txt_al = "\n".join([
