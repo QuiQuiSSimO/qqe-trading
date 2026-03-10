@@ -1,5 +1,5 @@
-# QQE COMMAND V5 — HECTOR TRADING SYSTEM
-# Binarias 1min + Swing H1/H4 + Scanner + IA Grafico + Estrategia EMA/QQE/Vela
+# QQE COMMAND V7 — HECTOR TRADING SYSTEM
+# Binarias 1min + Swing H1/H4/M15 + Scanner + IA Grafico + Estrategia EMA/QQE/Vela + HECTOR Scanner
 #
 # INSTALACION: pip install streamlit requests yfinance pandas numpy streamlit-autorefresh
 # EJECUCION:   streamlit run qqe_v5.py
@@ -55,7 +55,7 @@ except:
     COMPONENTS_OK = False
 
 st.set_page_config(
-    page_title="QQE Command v6 — Hector",
+    page_title="QQE Command v7 — Hector",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -217,10 +217,11 @@ defaults = {
     "perdida_dia": 0.0,
     "radar_bloqueado": False,
     "autorefresh_on": False,
-    "hector_results": None,
-    "hector_ultimo": "",
     "autorefresh_min": 5,
     "ultima_alerta_son": "",
+    "hector_results": None,
+    "hector_ultimo": "",
+    "swing_resultados": {},
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -264,25 +265,27 @@ def calc_pnl():
 # ================================================================
 ACTIVOS = {
     # FOREX
-    "EUR/USD":   {"yahoo": "EURUSD=X",  "tipo": "forex"},
-    "GBP/USD":   {"yahoo": "GBPUSD=X",  "tipo": "forex"},
-    "USD/JPY":   {"yahoo": "JPY=X",     "tipo": "forex"},
-    "AUD/USD":   {"yahoo": "AUDUSD=X",  "tipo": "forex"},
-    "USD/CAD":   {"yahoo": "CAD=X",     "tipo": "forex"},
-    "EUR/GBP":   {"yahoo": "EURGBP=X",  "tipo": "forex"},
-    # MATERIAS PRIMAS
-    "XAU/USD":   {"yahoo": "GC=F",      "tipo": "commodity"},
-    "XAG/USD":   {"yahoo": "SI=F",      "tipo": "commodity"},
-    "CRUDE OIL": {"yahoo": "CL=F",      "tipo": "commodity"},
-    "NAT GAS":   {"yahoo": "NG=F",      "tipo": "commodity"},
-    "COPPER":    {"yahoo": "HG=F",      "tipo": "commodity"},
-    # INDICES
-    "NAS100":    {"yahoo": "NQ=F",      "tipo": "index"},
-    "SP500":     {"yahoo": "ES=F",      "tipo": "index"},
-    "DOW30":     {"yahoo": "YM=F",      "tipo": "index"},
+    "EUR/USD":       {"yahoo": "EURUSD=X",  "tipo": "forex",     "iq_name": "EUR/USD"},
+    "GBP/USD":       {"yahoo": "GBPUSD=X",  "tipo": "forex",     "iq_name": "GBP/USD"},
+    "USD/JPY":       {"yahoo": "USDJPY=X",  "tipo": "forex",     "iq_name": "USD/JPY"},
+    "AUD/USD":       {"yahoo": "AUDUSD=X",  "tipo": "forex",     "iq_name": "AUD/USD"},
+    "USD/CAD":       {"yahoo": "USDCAD=X",  "tipo": "forex",     "iq_name": "USD/CAD"},
+    "EUR/GBP":       {"yahoo": "EURGBP=X",  "tipo": "forex",     "iq_name": "EUR/GBP"},
+    # COMMODITIES (nomenclatura exacta IQ Option)
+    "Gold":          {"yahoo": "GC=F",      "tipo": "commodity", "iq_name": "Gold"},
+    "Silver":        {"yahoo": "SI=F",      "tipo": "commodity", "iq_name": "Silver"},
+    "WTI Crude Oil": {"yahoo": "CL=F",      "tipo": "commodity", "iq_name": "WTI Crude Oil"},
+    "Brent Crude Oil":{"yahoo":"BZ=F",      "tipo": "commodity", "iq_name": "Brent Crude Oil"},
+    "Natural Gas":   {"yahoo": "NG=F",      "tipo": "commodity", "iq_name": "Natural Gas"},
+    "Copper":        {"yahoo": "HG=F",      "tipo": "commodity", "iq_name": "Copper"},
+    # INDICES (nomenclatura exacta IQ Option)
+    "US 100":        {"yahoo": "NQ=F",      "tipo": "index",     "iq_name": "US 100 (NAS100)"},
+    "US 500":        {"yahoo": "ES=F",      "tipo": "index",     "iq_name": "US 500 (SP500)"},
+    "US 30":         {"yahoo": "YM=F",      "tipo": "index",     "iq_name": "US 30 (DOW30)"},
+    "GER 40":        {"yahoo": "GDAXI",     "tipo": "index",     "iq_name": "GER 40 (DAX)"},
     # CRYPTO
-    "BTC/USD":   {"yahoo": "BTC-USD",   "tipo": "crypto"},
-    "ETH/USD":   {"yahoo": "ETH-USD",   "tipo": "crypto"},
+    "BTC/USD":       {"yahoo": "BTC-USD",   "tipo": "crypto",    "iq_name": "BTC/USD"},
+    "ETH/USD":       {"yahoo": "ETH-USD",   "tipo": "crypto",    "iq_name": "ETH/USD"},
 }
 
 @st.cache_data(ttl=60)
@@ -380,8 +383,8 @@ def analizar_activo_1min(symbol):
 
 def analizar_activo_swing(symbol, tf="1h"):
     """Analiza activo para swing trading H1/H4"""
-    interval = "1h" if tf == "H1" else "4h" if tf == "H4" else "1d"
-    period   = "30d" if tf in ("H1","H4") else "90d"
+    interval = "15m" if tf == "M15" else "1h" if tf == "H1" else "4h" if tf == "H4" else "1d"
+    period   = "5d"  if tf == "M15" else "30d" if tf in ("H1","H4") else "90d"
     df = obtener_datos(symbol, period=period, interval=interval)
     if df is None or len(df) < 50: return None
 
@@ -534,7 +537,7 @@ st.markdown(f"""
 <div style="display:flex;justify-content:space-between;align-items:center;
 background:#0d1525;border:1px solid #1e3050;border-radius:12px;padding:14px 20px;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
   <div>
-    <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:26px;color:#c8920a;letter-spacing:2px;">QQE COMMAND V4</div>
+    <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:26px;color:#c8920a;letter-spacing:2px;">QQE COMMAND V7</div>
     <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;">BINARIAS 1MIN · SWING H1/H4 · SCANNER EN VIVO</div>
   </div>
   <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
@@ -552,8 +555,8 @@ background:#0d1525;border:1px solid #1e3050;border-radius:12px;padding:14px 20px
 # ================================================================
 # TABS
 # ================================================================
-tab_scan1, tab_swing, tab_swing_ia, tab_strat, tab_hector, tab_ops, tab_diario, tab_binarias, tab_copy, tab_codigos = st.tabs([
-    "⚡ SCANNER 1MIN", "📈 SWING SCANNER", "🖼 SWING IA GRAFICO",
+tab_scan1, tab_swing, tab_strat, tab_hector, tab_ops, tab_diario, tab_binarias, tab_copy, tab_codigos = st.tabs([
+    "⚡ SCANNER 1MIN", "📈 SWING + IA",
     "🎯 ESTRATEGIA EMA+QQE",
     "🔺 HECTOR SCANNER",
     "📋 REGISTRO", "📓 DIARIO", "🤖 SCRIPTS LUA", "👥 COPY", "💻 CODIGOS QQE"
@@ -580,8 +583,7 @@ with tab_scan1:
                 st_autorefresh(interval=ar_min * 60 * 1000, key="ar_main_1min")
             st.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4ade80;">● ACTIVO — {ar_min}min</div>', unsafe_allow_html=True)
     with c4:
-        _def_1min = [a for a in ["EUR/USD","GBP/USD","XAU/USD"] if a in ACTIVOS]
-        activos_sel1 = st.multiselect("Activos", list(ACTIVOS.keys()), default=_def_1min, key="act_1min", label_visibility="collapsed")
+        activos_sel1 = st.multiselect("Activos", list(ACTIVOS.keys()), default=["EUR/USD","GBP/USD","XAU/USD"], key="act_1min", label_visibility="collapsed")
 
     if st.session_state.radar_bloqueado:
         st.error("🛑 RADAR BLOQUEADO — Stop Loss diario alcanzado.")
@@ -692,18 +694,78 @@ with tab_scan1:
     </div>""", unsafe_allow_html=True)
 
 # ================================================================
-# TAB 2 — SWING SCANNER
+# TAB 2 — SWING SCANNER + IA (FUSIONADO v7)
 # ================================================================
 with tab_swing:
-    st.markdown('<div class="sec">SWING TRADING SCANNER — H1 / H4</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec">📈 SWING TRADING + IA — SCANNER · GRAFICOS · TEMPORALIDAD</div>', unsafe_allow_html=True)
 
+    # ── ASESORAMIENTO DE TEMPORALIDAD EN TIEMPO REAL ──────────────
+    utc_h = get_utc_hour()
+    if 7 <= utc_h < 12:
+        ses_nom = "🟢 SESION LONDRES"
+        ses_col = "#4ade80"
+        ses_bg  = "#0a3020"
+        ses_brd = "#16a34a"
+        tf_rec  = "M15"
+        ses_desc = "Mercado con alta liquidez y volatilidad. Ideal para M15 y H1. Mayor probabilidad de señales limpias."
+    elif 13 <= utc_h < 18:
+        ses_nom = "🔵 SESION NEW YORK"
+        ses_col = "#60a5fa"
+        ses_bg  = "#0a1a30"
+        ses_brd = "#2563eb"
+        tf_rec  = "H1"
+        ses_desc = "Solapamiento con Londres en apertura (13–16 UTC). H1 y H4 muestran tendencias más sólidas."
+    elif 0 <= utc_h < 3:
+        ses_nom = "🟣 SESION TOKIO"
+        ses_col = "#c084fc"
+        ses_bg  = "#1a0a2a"
+        ses_brd = "#9333ea"
+        tf_rec  = "H4"
+        ses_desc = "Sesión asiática. Movimientos más lentos. Preferir H4 o D1. Evitar binarias en esta sesión."
+    else:
+        ses_nom = "⚪ MERCADO TRANQUILO"
+        ses_col = "#94a3b8"
+        ses_bg  = "#0d1525"
+        ses_brd = "#1e3050"
+        tf_rec  = "H4"
+        ses_desc = "Baja liquidez. Spreads más amplios. Usar solo H4 o D1. No operar binarias ahora."
+
+    st.markdown(f"""
+    <div style="background:{ses_bg};border:2px solid {ses_brd};border-radius:14px;padding:16px 20px;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div>
+          <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:22px;color:{ses_col};">{ses_nom}</div>
+          <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#94a3b8;margin-top:4px;">{ses_desc}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">TEMPORALIDAD RECOMENDADA</div>
+          <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:28px;color:{ses_col};">{tf_rec}</div>
+          <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">{datetime.now(timezone.utc).strftime('%H:%M')} UTC</div>
+        </div>
+      </div>
+    </div>""", unsafe_allow_html=True)
+
+    # ── CONTROLES ────────────────────────────────────────────────
     c1, c2, c3 = st.columns([2,2,2])
     with c1:
         swing_btn = st.button("📈 ESCANEAR SWING", key="swing_scan_btn", use_container_width=True)
     with c2:
-        tf_sel = st.selectbox("Temporalidad", ["H1","H4","D1"], key="swing_tf")
+        tf_options = ["M15","H1","H4","D1"]
+        tf_default = tf_options.index(tf_rec) if tf_rec in tf_options else 1
+        tf_sel = st.selectbox("Temporalidad", tf_options, index=tf_default, key="swing_tf")
     with c3:
         activos_swing = st.multiselect("Activos", list(ACTIVOS.keys()), default=list(ACTIVOS.keys()), key="act_swing", label_visibility="collapsed")
+
+    # Badge por temporalidad seleccionada
+    tf_badges = {
+        "M15": ("#fbbf24","#2a1a00","⚡ M15 — SCALPING RÁPIDO. Señales frecuentes. Requiere estar en pantalla. Solo sesión Londres/NY."),
+        "H1":  ("#60a5fa","#0a1a30","📊 H1 — SWING CORTO. Buen balance señal/ruido. Para sesiones activas."),
+        "H4":  ("#4ade80","#0a3020","🎯 H4 — SWING MEDIO. Señales más confiables. Ideal para tendencias diarias."),
+        "D1":  ("#c084fc","#1a0a2a","🌙 D1 — SWING LARGO. Máxima fiabilidad. Para posiciones de 1–5 días."),
+    }
+    if tf_sel in tf_badges:
+        bc, bb, btxt = tf_badges[tf_sel]
+        st.markdown(f'<div style="background:{bb};border:1px solid {bc};border-radius:8px;padding:8px 14px;margin-bottom:10px;font-family:Share Tech Mono,monospace;font-size:10px;color:{bc};">{btxt}</div>', unsafe_allow_html=True)
 
     if swing_btn:
         swing_res = {}
@@ -715,6 +777,7 @@ with tab_swing:
             r = analizar_activo_swing(ACTIVOS[activo]["yahoo"], tf_sel)
             if r:
                 r["activo"] = activo
+                r["iq_name"] = ACTIVOS[activo].get("iq_name", activo)
                 swing_res[activo] = r
             prog2.progress((idx+1) / max(len(activos_swing),1))
         prog2.empty(); txt2.empty()
@@ -728,7 +791,7 @@ with tab_swing:
                     enviadas = st.session_state.get("tg_enviadas", set())
                     if key_sw not in enviadas:
                         ic = "📈" if "LONG" in r["direccion"] else "📉"
-                        msg = (f"{ic} <b>SWING {tf_sel} — {activo}</b>\n"
+                        msg = (f"{ic} <b>SWING {tf_sel} — {r.get('iq_name', activo)}</b>\n"
                                f"━━━━━━━━━━━━━━\n"
                                f"📊 {r['direccion']} — {r['tendencia']}\n"
                                f"🎯 Score: {r['score']}%\n"
@@ -737,15 +800,49 @@ with tab_swing:
                                f"🎯 Take Profit: {r['tp']:.4f}\n"
                                f"📊 RSI: {r['rsi']:.1f}\n"
                                f"💵 Capital 2%: <b>${st.session_state.capital*0.02:.2f}</b>\n"
-                               f"<i>QQE Command v4 · {tf_sel}</i>")
+                               f"<i>QQE Command v7 · {tf_sel}</i>")
                         ok = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, msg)
                         if ok:
                             enviadas.add(key_sw)
                             st.session_state.tg_enviadas = enviadas
         st.rerun()
 
-    # Mostrar swing
-    if hasattr(st.session_state, "swing_resultados") and st.session_state.swing_resultados:
+    # ── TOP 3 SEÑALES DESTACADAS ──────────────────────────────────
+    if st.session_state.swing_resultados:
+        res_all = sorted(st.session_state.swing_resultados.values(), key=lambda x: x["score"], reverse=True)
+        top3 = [r for r in res_all if r["direccion"] != "ESPERAR"][:3]
+        if top3:
+            st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#c8920a;letter-spacing:2px;margin:10px 0 8px;">🏆 MEJORES SEÑALES AHORA</div>', unsafe_allow_html=True)
+            cols_top = st.columns(len(top3))
+            for i, r in enumerate(top3):
+                es_long = "LONG" in r["direccion"]
+                col = "#4ade80" if es_long else "#f87171"
+                bg  = "#0a3020" if es_long else "#200a0a"
+                brd = "#16a34a" if es_long else "#dc2626"
+                ic  = "▲ SUBE" if es_long else "▼ BAJA"
+                iq_nm = r.get("iq_name", r["activo"])
+                with cols_top[i]:
+                    st.markdown(f"""
+                    <div style="background:{bg};border:2px solid {brd};border-radius:12px;padding:14px;text-align:center;">
+                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:14px;color:#c8d8e8;">{iq_nm}</div>
+                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:22px;color:{col};margin:4px 0;">{ic}</div>
+                      <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">Entrada</div>
+                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:{col};">{r['precio']:.4f}</div>
+                      <div style="display:flex;justify-content:space-between;margin-top:8px;">
+                        <div style="text-align:center;flex:1;">
+                          <div style="font-family:Share Tech Mono,monospace;font-size:8px;color:#f87171;">SL</div>
+                          <div style="font-family:Rajdhani,sans-serif;font-size:12px;color:#f87171;">{r['sl']:.4f}</div>
+                        </div>
+                        <div style="text-align:center;flex:1;">
+                          <div style="font-family:Share Tech Mono,monospace;font-size:8px;color:#4ade80;">TP</div>
+                          <div style="font-family:Rajdhani,sans-serif;font-size:12px;color:#4ade80;">{r['tp']:.4f}</div>
+                        </div>
+                      </div>
+                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:18px;color:{col};margin-top:6px;">{r['score']}%</div>
+                    </div>""", unsafe_allow_html=True)
+
+    # ── LISTA COMPLETA ────────────────────────────────────────────
+    if st.session_state.swing_resultados:
         res_list = sorted(st.session_state.swing_resultados.values(), key=lambda x: x["score"], reverse=True)
         for r in res_list:
             es_long = "LONG" in r["direccion"]
@@ -797,163 +894,314 @@ with tab_swing:
         </div>""", unsafe_allow_html=True)
 
 # ================================================================
-# TAB 3 — SWING IA GRAFICO
+# TAB — HECTOR SCANNER (v7)
 # ================================================================
-with tab_swing_ia:
-    st.markdown('<div class="sec">ANALIZADOR IA — CAPTURA DE GRAFICO IQ OPTION</div>', unsafe_allow_html=True)
 
-    st.markdown("""
-    <div style="background:#0d1525;border:1px solid #c8920a;border-radius:12px;padding:14px 18px;margin-bottom:16px;">
-      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:16px;color:#c8920a;margin-bottom:8px;">Como usar</div>
-      <div style="font-size:13px;color:#94a3b8;line-height:1.9;">
-        1. Abrí IQ Option → seleccioná el activo → temporalidad H1 o H4<br>
-        2. Sacá captura de pantalla del grafico (iPhone: lateral + subir volumen)<br>
-        3. Completá los datos del trade abajo<br>
-        4. Subí la imagen → la IA analiza y te dice la probabilidad, SL y TP recomendados
-      </div>
-    </div>""", unsafe_allow_html=True)
+HECTOR_1_LUA = '''instrument {
+    name = "HECTOR 1 - Triple Confirm",
+    short_name = "HECTOR1",
+    icon = "indicators:MA",
+    overlay = true
+}
 
-    if not get_ia_ok():
-        st.markdown('<div style="background:#3a0a0a;border:1px solid #dc2626;border-radius:8px;padding:12px;color:#f87171;font-family:Share Tech Mono,monospace;font-size:11px;">Necesitas la clave API de Anthropic en el sidebar para usar el analizador.</div>', unsafe_allow_html=True)
-    else:
-        # FORMULARIO DE CONTEXTO
-        st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;margin-bottom:8px;">DATOS DEL TRADE</div>', unsafe_allow_html=True)
+local ema5, ema13, ema50, macd_line, signal_line, hist, rsi14
 
-        col_a, col_b, col_c = st.columns(3)
-        with col_a:
-            activo_ia = st.selectbox("Activo", list(ACTIVOS.keys()) + ["Otro"], key="ia_activo")
-        with col_b:
-            tf_ia = st.selectbox("Temporalidad", ["H1 (1 hora)","H4 (4 horas)","D1 (diario)"], key="ia_tf")
-        with col_c:
-            dir_ia = st.selectbox("Direccion que analizas", ["Sin preferencia","CALL / LONG (sube)","PUT / SHORT (baja)"], key="ia_dir")
+function init()
+    ema5  = ema(close, 5)
+    ema13 = ema(close, 13)
+    ema50 = ema(close, 50)
+    local fast = ema(close, 12)
+    local slow = ema(close, 26)
+    macd_line   = fast - slow
+    signal_line = ema(macd_line, 9)
+    hist        = macd_line - signal_line
+    rsi14       = rsi(close, 14)
+end
 
-        col_d, col_e = st.columns(2)
-        with col_d:
-            precio_ia = st.text_input("Precio actual (opcional)", placeholder="1.0842", key="ia_precio")
-        with col_e:
-            notas_ia = st.text_input("Notas adicionales (opcional)", placeholder="Rompio resistencia, noticias hoy...", key="ia_notas")
+function update()
+    -- F1: EMA Stack
+    local f1_call = ema5[0] > ema13[0] and ema13[0] > ema50[0]
+    local f1_put  = ema5[0] < ema13[0] and ema13[0] < ema50[0]
 
-        st.markdown("---")
+    -- F2: MACD cross
+    local f2_call = hist[0] > 0 and hist[1] <= 0
+    local f2_put  = hist[0] < 0 and hist[1] >= 0
 
-        # MULTIPLES IMAGENES
-        st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;margin-bottom:8px;">CAPTURA DEL GRAFICO — podes subir hasta 3 imagenes (H1 + H4 + M15)</div>', unsafe_allow_html=True)
+    -- F3: RSI zone
+    local f3_call = rsi14[0] >= 45 and rsi14[0] <= 75
+    local f3_put  = rsi14[0] >= 25 and rsi14[0] <= 55
 
-        imgs = st.file_uploader("", type=["png","jpg","jpeg","webp"], accept_multiple_files=True, key="ia_imgs", label_visibility="collapsed")
+    -- F4: Vela confirmacion
+    local f4_call = close[0] > open[0]
+    local f4_put  = close[0] < open[0]
 
-        if imgs:
-            # Preview
-            cols_prev = st.columns(min(len(imgs), 3))
-            for i, img in enumerate(imgs[:3]):
-                with cols_prev[i]:
-                    st.image(img, use_column_width=True)
-                    st.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;text-align:center;">{img.name}</div>', unsafe_allow_html=True)
+    -- Barcolor
+    local color_bar = "gray"
+    if f1_call and f3_call then color_bar = "lime"
+    elseif f1_put and f3_put then color_bar = "red"
+    end
+    barcolor(color_bar)
 
-            st.markdown("---")
+    -- Señales CALL (4/4)
+    if f1_call and f2_call and f3_call and f4_call then
+        plot_shape(low[0], shape.triangleup, shape_location.belowbar, "lime", "CALL", 20)
+    elseif (f1_call and f2_call and f3_call) or (f1_call and f2_call and f4_call) then
+        plot_shape(low[0], shape.triangleup, shape_location.belowbar, "orange", "PREP", 10)
+    end
 
-            if st.button("🧠 ANALIZAR CON IA — SWING TRADING", key="ia_analizar_swing", use_container_width=True):
-                with st.spinner("La IA está analizando el grafico..."):
-                    try:
-                        # Construir contenido con todas las imagenes
-                        content = []
-                        for img in imgs[:3]:
-                            ext = img.name.split(".")[-1].lower()
-                            mtype = "image/jpeg" if ext in ("jpg","jpeg") else f"image/{ext}"
-                            b64 = base64.b64encode(img.read()).decode()
-                            content.append({"type":"image","source":{"type":"base64","media_type":mtype,"data":b64}})
+    -- Señales PUT (4/4)
+    if f1_put and f2_put and f3_put and f4_put then
+        plot_shape(high[0], shape.triangledown, shape_location.abovebar, "red", "PUT", 20)
+    elseif (f1_put and f2_put and f3_put) or (f1_put and f2_put and f4_put) then
+        plot_shape(high[0], shape.triangledown, shape_location.abovebar, "orange", "PREP", 10)
+    end
 
-                        # Contexto adicional
-                        ctx_dir = dir_ia if dir_ia != "Sin preferencia" else "sin direccion previa"
-                        ctx_precio = f"Precio actual: {precio_ia}." if precio_ia else ""
-                        ctx_notas = f"Contexto adicional: {notas_ia}." if notas_ia else ""
-                        ctx_capital = f"Capital de Hector: ${st.session_state.capital:.2f}. Entrada 2%: ${st.session_state.capital*0.02:.2f}."
+    -- EMAs
+    plot(ema5[0],  "EMA5",  "yellow", 1)
+    plot(ema13[0], "EMA13", "cyan",   1)
+    plot(ema50[0], "EMA50", "gray",   1)
+end'''
 
-                        content.append({"type":"text","text":f"""Analiza este grafico de {activo_ia} en {tf_ia}.
-El trader considera: {ctx_dir}. {ctx_precio} {ctx_notas} {ctx_capital}
+HECTOR_2_LUA = '''instrument {
+    name = "HECTOR 2 - RSI MACD Panel",
+    short_name = "HECTOR2",
+    icon = "indicators:MA",
+    overlay = false
+}
 
-Dame un analisis COMPLETO de swing trading."""})
+local rsi14, macd_line, signal_line, hist
 
-                        sys_swing = f"""Eres el analista de swing trading personal de Hector. Opera en IQ Option con opciones H1 y H4.
-Tu objetivo: analizar el grafico y dar una recomendacion CLARA y ACCIONABLE.
+function init()
+    rsi14       = rsi(close, 14)
+    local fast  = ema(close, 12)
+    local slow  = ema(close, 26)
+    macd_line   = fast - slow
+    signal_line = ema(macd_line, 9)
+    hist        = macd_line - signal_line
+end
 
-ESTRUCTURA OBLIGATORIA de tu respuesta:
-1. DECISION: ENTRAR CALL / ENTRAR PUT / ESPERAR (en grande)
-2. PROBABILIDAD DE EXITO: X% (estimacion honesta)
-3. POR QUE: 2-3 lineas del razonamiento tecnico
-4. STOP LOSS recomendado: precio exacto o distancia en pips/puntos
-5. TAKE PROFIT: precio exacto o distancia (minimo ratio 1:2)
-6. TIEMPO ESTIMADO: cuanto puede tardar el movimiento
-7. QUE INVALIDARIA la señal: una linea
+function update()
+    -- RSI
+    local r = rsi14[0]
+    local rsi_col = "gray"
+    if r >= 70 then rsi_col = "red"
+    elseif r <= 30 then rsi_col = "lime"
+    elseif r >= 45 and r <= 75 then rsi_col = "cyan"
+    end
+    plot(r, "RSI", rsi_col, 2)
 
-Maximo 200 palabras. En espanol. Directo. Sin rodeos.
-Si el grafico no es claro o hay riesgo alto, decilo sin dudar."""
+    -- MACD hist
+    local h_col = hist[0] >= 0 and "lime" or "red"
+    plot(hist[0], "MACD Hist", h_col, 3)
+    plot(0, "Zero", "gray", 1)
+end'''
 
-                        resp = requests.post("https://api.anthropic.com/v1/messages",
-                            headers={"Content-Type":"application/json",
-                                     "x-api-key": st.session_state.get("api_key",""),
-                                     "anthropic-version":"2023-06-01"},
-                            json={"model":"claude-sonnet-4-20250514","max_tokens":600,
-                                  "system":sys_swing,
-                                  "messages":[{"role":"user","content":content}]},
-                            timeout=60)
+def hector_filtros_live(symbol):
+    """Run HECTOR 1 four-filter logic on live 1min data"""
+    try:
+        df = obtener_datos_1min(symbol)
+        if df is None or len(df) < 60:
+            return None
+        c = df["cierre"].values
+        o = df["apertura"].values
 
-                        if resp.status_code == 200:
-                            texto = resp.json()["content"][0]["text"]
-                            st.session_state[f"swing_ia_resp_{activo_ia}"] = {
-                                "texto": texto, "hora": datetime.now().strftime("%H:%M"),
-                                "activo": activo_ia, "tf": tf_ia
-                            }
-                            st.rerun()
-                        else:
-                            st.error(f"Error API: {resp.status_code} — {resp.text[:200]}")
-                    except Exception as e:
-                        st.error(f"Error: {e}")
+        def ema_calc(src, n):
+            k = 2/(n+1)
+            e = [src[0]]
+            for i in range(1, len(src)):
+                e.append(src[i]*k + e[-1]*(1-k))
+            return np.array(e)
+
+        e5  = ema_calc(c, 5)
+        e13 = ema_calc(c, 13)
+        e50 = ema_calc(c, 50)
+        fast = ema_calc(c, 12)
+        slow = ema_calc(c, 26)
+        macd = fast - slow
+        sig  = ema_calc(macd, 9)
+        hist = macd - sig
+
+        # RSI
+        delta = np.diff(c)
+        gain  = np.where(delta > 0, delta, 0)
+        loss  = np.where(delta < 0, -delta, 0)
+        avg_g = np.zeros(len(delta))
+        avg_l = np.zeros(len(delta))
+        n_rsi = 14
+        avg_g[n_rsi-1] = gain[:n_rsi].mean()
+        avg_l[n_rsi-1] = loss[:n_rsi].mean()
+        for i in range(n_rsi, len(delta)):
+            avg_g[i] = (avg_g[i-1]*(n_rsi-1) + gain[i]) / n_rsi
+            avg_l[i] = (avg_l[i-1]*(n_rsi-1) + loss[i]) / n_rsi
+        rs = np.where(avg_l == 0, 100, avg_g / (avg_l + 1e-10))
+        rsi_arr = 100 - 100/(1+rs)
+        rsi_full = np.concatenate([[50], rsi_arr])
+
+        i = -1  # current bar
+        p = -2  # previous bar
+
+        f1_call = e5[i] > e13[i] and e13[i] > e50[i]
+        f1_put  = e5[i] < e13[i] and e13[i] < e50[i]
+        f2_call = hist[i] > 0 and hist[p] <= 0
+        f2_put  = hist[i] < 0 and hist[p] >= 0
+        rsi_v   = rsi_full[i]
+        f3_call = 45 <= rsi_v <= 75
+        f3_put  = 25 <= rsi_v <= 55
+        f4_call = c[i] > o[i]
+        f4_put  = c[i] < o[i]
+
+        score_call = sum([f1_call, f2_call, f3_call, f4_call])
+        score_put  = sum([f1_put,  f2_put,  f3_put,  f4_put])
+
+        if score_call >= score_put:
+            return {
+                "dir": "CALL", "score": score_call,
+                "f1": f1_call, "f2": f2_call, "f3": f3_call, "f4": f4_call,
+                "precio": float(c[i]), "rsi": float(rsi_v),
+                "hora": datetime.now().strftime("%H:%M")
+            }
         else:
-            st.markdown("""
-            <div style="text-align:center;padding:50px 20px;background:#0d1525;border:2px dashed #1e3050;border-radius:12px;margin-top:10px;">
-              <div style="font-size:52px;margin-bottom:12px;">📱</div>
-              <div style="font-family:Rajdhani,sans-serif;font-size:20px;color:#4a7a99;">Subi la captura de IQ Option</div>
-              <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#2a3a55;margin-top:8px;">Podes subir hasta 3 graficos — H1 + H4 + M15</div>
-            </div>""", unsafe_allow_html=True)
+            return {
+                "dir": "PUT", "score": score_put,
+                "f1": f1_put, "f2": f2_put, "f3": f3_put, "f4": f4_put,
+                "precio": float(c[i]), "rsi": float(rsi_v),
+                "hora": datetime.now().strftime("%H:%M")
+            }
+    except Exception as e:
+        return None
 
-        # Mostrar resultado IA
-        resp_key = f"swing_ia_resp_{activo_ia if 'activo_ia' in dir() else 'XAU/USD'}"
-        if resp_key in st.session_state and st.session_state[resp_key]:
-            res_ia = st.session_state[resp_key]
-            texto = res_ia["texto"]
+with tab_hector:
+    st.markdown('<div class="sec">🔺 HECTOR SCANNER — SEÑALES EN VIVO (4 FILTROS)</div>', unsafe_allow_html=True)
 
-            # Color segun decision
-            if "ENTRAR CALL" in texto.upper() or "CALL" in texto.upper()[:50]:
-                rc,rb,rbr,ri = "#4ade80","#0a3020","#16a34a","🟢"
-            elif "ENTRAR PUT" in texto.upper() or "PUT" in texto.upper()[:50]:
-                rc,rb,rbr,ri = "#f87171","#200a0a","#dc2626","🔴"
-            elif "ESPERAR" in texto.upper()[:80]:
-                rc,rb,rbr,ri = "#fbbf24","#2a1a00","#c8920a","🟡"
+    # Filtro por tipo
+    hc1, hc2, hc3 = st.columns([2,2,2])
+    with hc1:
+        h_scan_btn = st.button("🔺 ESCANEAR HECTOR", key="hector_scan_btn", use_container_width=True)
+    with hc2:
+        tipo_fil = st.selectbox("Filtrar por tipo", ["Todos","forex","commodity","index","crypto"], key="h_tipo_fil")
+    with hc3:
+        st.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;margin-top:20px;">Sistema: EMA5>13>50 · MACD cruce · RSI zona · Vela</div>', unsafe_allow_html=True)
+
+    if h_scan_btn:
+        activos_h = {k:v for k,v in ACTIVOS.items() if tipo_fil == "Todos" or v["tipo"] == tipo_fil}
+        hector_res = {}
+        prog_h = st.progress(0)
+        txt_h = st.empty()
+        for idx, (activo, info) in enumerate(activos_h.items()):
+            prog_h.progress(idx / max(len(activos_h),1))
+            txt_h.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#c8920a;">🔺 Analizando {activo}... ({idx+1}/{len(activos_h)})</div>', unsafe_allow_html=True)
+            r = hector_filtros_live(info["yahoo"])
+            if r:
+                r["activo"] = activo
+                r["iq_name"] = info.get("iq_name", activo)
+                hector_res[activo] = r
+            prog_h.progress((idx+1) / max(len(activos_h),1))
+        prog_h.empty(); txt_h.empty()
+        st.session_state.hector_results = hector_res
+        st.session_state.hector_ultimo = datetime.now().strftime("%H:%M:%S")
+
+        # Telegram para 4/4
+        if st.session_state.tg_on and st.session_state.tg_token:
+            for activo, r in hector_res.items():
+                if r["score"] == 4:
+                    key_h = f"hector_{activo}_{r['hora']}"
+                    enviadas = st.session_state.get("tg_enviadas", set())
+                    if key_h not in enviadas:
+                        ic = "🟢📈" if r["dir"] == "CALL" else "🔴📉"
+                        msg = (f"{ic} <b>HECTOR 1 — {r['iq_name']} — {r['dir']}</b>\n"
+                               f"━━━━━━━━━━━━━━\n"
+                               f"✅ F1 EMA Stack · F2 MACD · F3 RSI · F4 Vela\n"
+                               f"💰 Precio: {r['precio']:.5f}\n"
+                               f"📊 RSI: {r['rsi']:.1f}\n"
+                               f"💵 Entrada 1%: <b>${st.session_state.capital*0.01:.2f}</b>\n"
+                               f"⏰ Expiry: 1 minuto\n"
+                               f"<i>HECTOR Scanner v7 · {r['hora']}</i>")
+                        ok = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, msg)
+                        if ok:
+                            enviadas.add(key_h)
+                            st.session_state.tg_enviadas = enviadas
+        st.rerun()
+
+    # Mostrar resultados HECTOR
+    if st.session_state.hector_results:
+        res_h = st.session_state.hector_results
+        ultimo = st.session_state.hector_ultimo
+        st.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;margin-bottom:8px;">Ultimo scan: {ultimo} · {len(res_h)} activos</div>', unsafe_allow_html=True)
+
+        # Ordenar: 4 primero, luego 3, luego resto
+        sorted_h = sorted(res_h.values(), key=lambda x: x["score"], reverse=True)
+
+        for r in sorted_h:
+            es_call = r["dir"] == "CALL"
+            s = r["score"]
+            if s == 4:
+                card_b = "#0a3020" if es_call else "#200a0a"
+                card_brd = "#16a34a" if es_call else "#dc2626"
+                lbl = "🟢 ENTRAR CALL" if es_call else "🔴 ENTRAR PUT"
+                lbl_col = "#4ade80" if es_call else "#f87171"
+            elif s == 3:
+                card_b, card_brd = "#1a1200","#c8920a"
+                lbl = "🟡 ESPERAR (3/4)"
+                lbl_col = "#fbbf24"
             else:
-                rc,rb,rbr,ri = "#c8d8e8","#0d1525","#1e3050","⚪"
+                card_b, card_brd = "#0d1525","#1e3050"
+                lbl = f"⚪ {r['dir']} ({s}/4)"
+                lbl_col = "#4a7a99"
 
+            f_ic = lambda v: "✅" if v else "❌"
             st.markdown(f"""
-            <div style="background:{rb};border:2px solid {rbr};border-radius:14px;padding:20px;margin-top:16px;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-                <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:24px;color:{rc};">{ri} ANALISIS IA — {res_ia['activo']}</div>
-                <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">{res_ia['tf']} · {res_ia['hora']}</div>
+            <div style="background:{card_b};border:2px solid {card_brd};border-radius:12px;padding:14px 18px;margin-bottom:8px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+                <div>
+                  <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:20px;color:#c8d8e8;">{r.get('iq_name', r['activo'])}</span>
+                  <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:16px;color:{lbl_col};margin-left:12px;">{lbl}</span>
+                </div>
+                <div style="text-align:right;">
+                  <span style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">Precio: </span>
+                  <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8d8e8;">{r['precio']:.5f}</span>
+                </div>
               </div>
-              <div style="font-size:14px;color:#c8d8e8;line-height:2.0;">{texto.replace(chr(10),"<br>")}</div>
-              <div style="margin-top:12px;padding-top:10px;border-top:1px solid {rbr};font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">
-                Capital: ${st.session_state.capital:.2f} · Entrada 2%: ${st.session_state.capital*0.02:.2f} · QQE Command v4
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px;">
+                <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
+                  <div style="font-family:Share Tech Mono,monospace;font-size:8px;color:#4a7a99;">F1 EMA Stack</div>
+                  <div style="font-size:18px;">{f_ic(r['f1'])}</div>
+                </div>
+                <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
+                  <div style="font-family:Share Tech Mono,monospace;font-size:8px;color:#4a7a99;">F2 MACD Cruce</div>
+                  <div style="font-size:18px;">{f_ic(r['f2'])}</div>
+                </div>
+                <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
+                  <div style="font-family:Share Tech Mono,monospace;font-size:8px;color:#4a7a99;">F3 RSI Zona</div>
+                  <div style="font-size:18px;">{f_ic(r['f3'])}</div>
+                </div>
+                <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
+                  <div style="font-family:Share Tech Mono,monospace;font-size:8px;color:#4a7a99;">F4 Vela Conf.</div>
+                  <div style="font-size:18px;">{f_ic(r['f4'])}</div>
+                </div>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">
+                <span>RSI: <b style="color:#c8d8e8;">{r['rsi']:.1f}</b></span>
+                <span>Entrada 1%: <b style="color:#c8920a;">${st.session_state.capital*0.01:.2f}</b></span>
+                <span>Expiry: <b style="color:#c8d8e8;">1 min</b></span>
+                <span>{r['hora']}</span>
               </div>
             </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div style="text-align:center;padding:60px 20px;background:#0d1525;border:2px dashed #1e3050;border-radius:12px;margin-top:10px;">
+          <div style="font-size:48px;margin-bottom:10px;">🔺</div>
+          <div style="font-family:Rajdhani,sans-serif;font-size:20px;color:#4a7a99;">Presiona ESCANEAR HECTOR</div>
+          <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#2a3a55;margin-top:6px;">Detecta señales de 4 filtros en tiempo real — M1</div>
+        </div>""", unsafe_allow_html=True)
 
-            # Guardar en diario
-            if st.button("📓 Guardar en Diario", key="guardar_diario_ia"):
-                st.session_state.diario.append({
-                    "fecha": date.today().strftime("%d/%m/%Y"),
-                    "hora": res_ia["hora"],
-                    "tipo": "ANALISIS IA",
-                    "activo": res_ia["activo"],
-                    "texto": texto,
-                    "tf": res_ia["tf"],
-                })
-                st.success("Guardado en el diario!")
+    # Scripts descargables
+    st.markdown("---")
+    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;margin-bottom:10px;">📥 SCRIPTS LUA PARA IQ OPTION</div>', unsafe_allow_html=True)
+    dl1, dl2 = st.columns(2)
+    with dl1:
+        st.download_button("⬇ Descargar HECTOR 1.lua", data=HECTOR_1_LUA, file_name="HECTOR_1_triple_confirm.lua", mime="text/plain", use_container_width=True)
+    with dl2:
+        st.download_button("⬇ Descargar HECTOR 2.lua", data=HECTOR_2_LUA, file_name="HECTOR_2_rsi_macd.lua", mime="text/plain", use_container_width=True)
 
 # ================================================================
 # TAB 4 — ESTRATEGIA EMA + QQE + VELA DE CONFIRMACION
@@ -1072,9 +1320,8 @@ with tab_strat:
     with c1:
         scan_strat_btn = st.button("🎯 ESCANEAR TRIPLE CONFIRMACION", key="scan_strat", use_container_width=True)
     with c2:
-        _def_strat = [a for a in ["EUR/USD","GBP/USD","XAU/USD"] if a in ACTIVOS]
         activos_strat = st.multiselect("Activos a escanear", list(ACTIVOS.keys()),
-            default=_def_strat, key="act_strat")
+            default=["EUR/USD","GBP/USD","XAU/USD"], key="act_strat")
 
     if scan_strat_btn:
         resultados_strat = []
@@ -1291,355 +1538,6 @@ end'''
 
 # ================================================================
 # ================================================================
-# TAB HECTOR — SCANNER TRIPLE CONFIRM + SCRIPTS LUA
-# ================================================================
-with tab_hector:
-    st.markdown('<div class="sec">🔺 HECTOR SCANNER — TRIPLE CONFIRM EN VIVO</div>', unsafe_allow_html=True)
-
-    # Descripcion
-    st.markdown("""
-    <div style="background:#0d1525;border:1px solid #c8920a;border-radius:12px;padding:14px 18px;margin-bottom:16px;">
-      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:18px;color:#c8920a;margin-bottom:6px;">Estrategia HECTOR 1 — Triple Confirm</div>
-      <div style="font-size:14px;color:#94a3b8;line-height:1.9;">
-        Misma logica que el script IQ Option: <b style="color:#c8920a;">EMA Stack + MACD + RSI + Vela</b><br>
-        <b style="color:#4ade80;">🔺 CALL</b>: EMA5>EMA13>EMA50 · MACD hist positivo · RSI 45–75 · vela alcista<br>
-        <b style="color:#f87171;">🔻 PUT</b>: EMA5&lt;EMA13&lt;EMA50 · MACD hist negativo · RSI 25–55 · vela bajista<br>
-        <b style="color:#ff9800;">⚠ AVISO</b>: 3/4 filtros activos — prepararse, esperar confirmacion
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Controles scanner
-    c1, c2, c3 = st.columns([2, 2, 3])
-    with c1:
-        hector_btn = st.button("🔺 ESCANEAR AHORA", key="hector_scan_btn", use_container_width=True)
-    with c2:
-        tipo_filtro = st.selectbox("Filtrar por tipo", ["Todos", "forex", "commodity", "index", "crypto"], key="hector_tipo")
-    with c3:
-        # Filtrar activos por tipo seleccionado
-        if tipo_filtro == "Todos":
-            activos_disponibles = list(ACTIVOS.keys())
-        else:
-            activos_disponibles = [a for a, v in ACTIVOS.items() if v["tipo"] == tipo_filtro]
-        activos_hector = st.multiselect(
-            "Activos",
-            list(ACTIVOS.keys()),
-            default=[a for a in (activos_disponibles[:8] if len(activos_disponibles) >= 8 else activos_disponibles) if a in ACTIVOS],
-            key="act_hector"
-        )
-
-    # Funcion analisis HECTOR
-    def analizar_hector(symbol):
-        df = obtener_datos_1min(symbol)
-        if df is None or len(df) < 55:
-            return None
-        c = df["cierre"]
-        o = df["apertura"]
-        h = df["maximo"]
-        l = df["minimo"]
-
-        e5  = calc_ema(c, 5)
-        e13 = calc_ema(c, 13)
-        e50 = calc_ema(c, 50)
-
-        macd_l = calc_ema(c, 5) - calc_ema(c, 13)
-        macd_s = calc_ema(macd_l, 4)
-        macd_h = macd_l - macd_s
-
-        rsi = calc_rsi(c, 14)
-
-        # Valores actuales
-        e5v   = e5.iloc[-1];   e13v  = e13.iloc[-1];  e50v  = e50.iloc[-1]
-        mh    = macd_h.iloc[-1]
-        rv    = rsi.iloc[-1]
-        cv    = c.iloc[-1];    ov    = o.iloc[-1]
-        hv    = h.iloc[-1];    lv    = l.iloc[-1]
-
-        rango  = hv - lv
-        cuerpo = abs(cv - ov)
-
-        # 4 filtros CALL
-        f1c = e5v > e13v and e13v > e50v
-        f2c = mh > 0
-        f3c = rv > 45 and rv < 75
-        f4c = cv > ov
-
-        # 4 filtros PUT
-        f1p = e5v < e13v and e13v < e50v
-        f2p = mh < 0
-        f3p = rv > 25 and rv < 55
-        f4p = cv < ov
-
-        nc = sum([f1c, f2c, f3c, f4c])
-        np = sum([f1p, f2p, f3p, f4p])
-
-        call_sig = f1c and f2c and f3c and f4c
-        put_sig  = f1p and f2p and f3p and f4p
-
-        if nc < 2 and np < 2:
-            return None
-
-        direccion = "CALL" if nc >= np else "PUT"
-        filtros   = nc if direccion == "CALL" else np
-        conf      = int(50 + filtros * 12)
-
-        return {
-            "precio": cv, "rsi": rv, "macd_hist": mh,
-            "e5": e5v, "e13": e13v, "e50": e50v,
-            "f1": f1c if direccion == "CALL" else f1p,
-            "f2": f2c if direccion == "CALL" else f2p,
-            "f3": f3c if direccion == "CALL" else f3p,
-            "f4": f4c if direccion == "CALL" else f4p,
-            "direccion": direccion,
-            "filtros": filtros,
-            "conf": conf,
-            "call_completo": call_sig,
-            "put_completo":  put_sig,
-            "hora": datetime.now().strftime("%H:%M:%S"),
-        }
-
-    if hector_btn:
-        resultados_h = []
-        prog_h = st.progress(0)
-        txt_h  = st.empty()
-        for idx, activo in enumerate(activos_hector):
-            prog_h.progress((idx + 1) / max(len(activos_hector), 1))
-            txt_h.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#c8920a;">⏳ Escaneando {activo}... ({idx+1}/{len(activos_hector)})</div>', unsafe_allow_html=True)
-            res = analizar_hector(ACTIVOS[activo]["yahoo"])
-            if res:
-                res["activo"] = activo
-                res["tipo"]   = ACTIVOS[activo]["tipo"]
-                resultados_h.append(res)
-        prog_h.empty(); txt_h.empty()
-        st.session_state["hector_results"] = resultados_h
-        st.session_state["hector_ultimo"]  = datetime.now().strftime("%H:%M:%S")
-
-        # Telegram
-        if st.session_state.tg_on and st.session_state.tg_token:
-            for r in resultados_h:
-                if r["filtros"] == 4:
-                    key_tg = f"hector_{r['activo']}_{r['hora']}"
-                    enviadas = st.session_state.get("tg_enviadas", set())
-                    if key_tg not in enviadas:
-                        ic = "🔺" if r["direccion"] == "CALL" else "🔻"
-                        msg = (f"{ic} <b>HECTOR TRIPLE CONFIRM — {r['activo']}</b>\n"
-                               f"━━━━━━━━━━━━━━\n"
-                               f"📊 {r['direccion']} — 4/4 filtros ✅\n"
-                               f"💰 Precio: {r['precio']:.5f}\n"
-                               f"📊 RSI: {r['rsi']:.1f}\n"
-                               f"💵 Entrada 1%: <b>${st.session_state.capital*0.01:.2f}</b>\n"
-                               f"⏱ Expiracion: 1 min\n"
-                               f"🕐 {r['hora']}\n"
-                               f"<i>QQE Command v6 — HECTOR</i>")
-                        ok = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, msg)
-                        if ok:
-                            enviadas.add(key_tg)
-                            st.session_state.tg_enviadas = enviadas
-        st.rerun()
-
-    # Mostrar resultados
-    if st.session_state.get("hector_results") is not None:
-        res_list = st.session_state["hector_results"]
-        ultimo   = st.session_state.get("hector_ultimo", "")
-
-        # Resumen
-        completos = [r for r in res_list if r["filtros"] == 4]
-        avisos    = [r for r in res_list if r["filtros"] == 3]
-        st.markdown(f"""
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
-          <div class="kpi"><div class="kpi-label">ULTIMO SCAN</div><div class="kpi-value" style="font-size:20px;color:#4a7a99;">{ultimo}</div></div>
-          <div class="kpi"><div class="kpi-label">SEÑALES 4/4</div><div class="kpi-value" style="color:{'#4ade80' if completos else '#4a7a99'};">{len(completos)}</div></div>
-          <div class="kpi"><div class="kpi-label">AVISOS 3/4</div><div class="kpi-value" style="color:{'#ff9800' if avisos else '#4a7a99'};">{len(avisos)}</div></div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        if not res_list:
-            st.markdown('<div style="text-align:center;padding:40px;color:#4a7a99;font-family:Share Tech Mono,monospace;font-size:13px;">Sin señales activas en este momento. Intentá durante sesion Londres (07-10 UTC) o NY (13-16 UTC).</div>', unsafe_allow_html=True)
-        else:
-            for r in sorted(res_list, key=lambda x: x["filtros"], reverse=True):
-                es_call    = r["direccion"] == "CALL"
-                completo   = r["filtros"] == 4
-                card_cls   = "signal-call" if es_call else "signal-put"
-                col_d      = "#4ade80" if es_call else "#f87171"
-                ic         = "🔺" if es_call else "🔻"
-                tipo_badge = {"forex": "FOREX", "commodity": "MATERIA PRIMA", "index": "INDICE", "crypto": "CRYPTO"}.get(r["tipo"], r["tipo"].upper())
-                tipo_col   = {"forex": "#60a5fa", "commodity": "#fbbf24", "index": "#a78bfa", "crypto": "#fb923c"}.get(r["tipo"], "#94a3b8")
-
-                st.markdown(f"""
-                <div class="{card_cls}" style="{'border:2px solid ' + col_d + ';' if completo else ''}margin-bottom:10px;">
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px;">
-                    <div>
-                      <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:22px;color:#c8d8e8;">{r['activo']}</span>
-                      <span style="font-family:Share Tech Mono,monospace;font-size:11px;color:{tipo_col};margin-left:10px;">{tipo_badge}</span>
-                      <span style="font-family:Share Tech Mono,monospace;font-size:12px;color:{col_d};margin-left:10px;">{ic} {r['direccion']}</span>
-                    </div>
-                    <div style="text-align:right;">
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:28px;color:{col_d};">{r['filtros']}/4</div>
-                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">{'✅ ENTRAR' if completo else '⚠ ESPERAR'}</div>
-                    </div>
-                  </div>
-
-                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:10px;">
-                    <div style="background:#060c18;border:1px solid {'#16a34a' if r['f1'] else '#1e3050'};border-radius:6px;padding:8px;text-align:center;">
-                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">EMA STACK</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:18px;color:{'#4ade80' if r['f1'] else '#374151'};">{'✓' if r['f1'] else '✗'}</div>
-                    </div>
-                    <div style="background:#060c18;border:1px solid {'#16a34a' if r['f2'] else '#1e3050'};border-radius:6px;padding:8px;text-align:center;">
-                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">MACD</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:18px;color:{'#4ade80' if r['f2'] else '#374151'};">{'✓' if r['f2'] else '✗'}</div>
-                    </div>
-                    <div style="background:#060c18;border:1px solid {'#16a34a' if r['f3'] else '#1e3050'};border-radius:6px;padding:8px;text-align:center;">
-                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">RSI</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:18px;color:{'#4ade80' if r['f3'] else '#374151'};">{'✓' if r['f3'] else '✗'}</div>
-                    </div>
-                    <div style="background:#060c18;border:1px solid {'#16a34a' if r['f4'] else '#1e3050'};border-radius:6px;padding:8px;text-align:center;">
-                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">VELA</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:18px;color:{'#4ade80' if r['f4'] else '#374151'};">{'✓' if r['f4'] else '✗'}</div>
-                    </div>
-                  </div>
-
-                  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
-                    <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
-                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">PRECIO</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8d8e8;">{r['precio']:.5f}</div>
-                    </div>
-                    <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
-                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">RSI</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:{'#f87171' if r['rsi']>70 else '#4ade80' if r['rsi']<30 else '#c8d8e8'};">{r['rsi']:.1f}</div>
-                    </div>
-                    <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
-                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">ENTRADA 1%</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8920a;">${st.session_state.capital*0.01:.2f}</div>
-                    </div>
-                    <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
-                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">EXPIRACION</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8d8e8;">1 min</div>
-                    </div>
-                  </div>
-
-                  {'<div style="background:#0a3020;border:1px solid #16a34a;border-radius:6px;padding:8px;margin-top:8px;font-family:Share Tech Mono,monospace;font-size:12px;color:#4ade80;">⚡ 4/4 FILTROS — Entrar en la PROXIMA vela. Expiracion 1 minuto.</div>' if completo else '<div style="background:#2a1a00;border:1px solid #c8920a;border-radius:6px;padding:8px;margin-top:8px;font-family:Share Tech Mono,monospace;font-size:12px;color:#fbbf24;">⚠ 3/4 filtros — Prepararse. Esperar que el 4to filtro confirme antes de entrar.</div>'}
-                </div>""", unsafe_allow_html=True)
-    else:
-        st.markdown("""
-        <div style="text-align:center;padding:60px 20px;background:#0d1525;border:2px dashed #1e3050;border-radius:12px;margin-top:10px;">
-          <div style="font-size:48px;margin-bottom:10px;">🔺</div>
-          <div style="font-family:Rajdhani,sans-serif;font-size:20px;color:#4a7a99;">Presiona ESCANEAR AHORA</div>
-          <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#2a3a55;margin-top:6px;">Detecta señales Triple Confirm en forex, materias primas, indices y crypto</div>
-        </div>""", unsafe_allow_html=True)
-
-    # ── SCRIPTS LUA PARA DESCARGAR ──────────────────────────────
-    st.markdown('<div class="sec" style="margin-top:24px;">📥 SCRIPTS LUA — DESCARGAR PARA IQ OPTION</div>', unsafe_allow_html=True)
-
-    script_hector1 = '''instrument {
-    name = "HECTOR 1 — Triple Confirm",
-    short_name = "H1_3C",
-    icon = "indicators:MA",
-    overlay = true
-}
-
-e5  = ema(close, 5)
-e13 = ema(close, 13)
-e50 = ema(close, 50)
-
-macd_linea  = ema(close, 5) - ema(close, 13)
-macd_signal = ema(macd_linea, 4)
-macd_hist   = macd_linea - macd_signal
-
-rsi_v = rsi(close, 14)
-
-f1_call = e5 > e13 and e13 > e50
-f1_put  = e5 < e13 and e13 < e50
-
-f2_call = macd_hist > 0 and macd_hist[1] <= 0
-f2_put  = macd_hist < 0 and macd_hist[1] >= 0
-
-f3_call = rsi_v > 45 and rsi_v < 75
-f3_put  = rsi_v > 25 and rsi_v < 55
-
-f4_call = close > open
-f4_put  = close < open
-
-call_signal = f1_call and f2_call and f3_call and f4_call
-put_signal  = f1_put  and f2_put  and f3_put  and f4_put
-
-warn_call = f1_call and f3_call and f4_call and not f2_call
-warn_put  = f1_put  and f3_put  and f4_put  and not f2_put
-
-plot(e5,  "EMA 5",  "yellow", 2)
-plot(e13, "EMA 13", "cyan",   2)
-plot(e50, "EMA 50", "gray",   1)
-
-plot_shape(call_signal, "CALL", shape_style.triangleup,
-    shape_size.large, "lime", shape_location.belowbar, 0, "CALL", "black")
-plot_shape(put_signal, "PUT", shape_style.triangledown,
-    shape_size.large, "red", shape_location.abovebar, 0, "PUT", "white")
-plot_shape(warn_call, "PREP+", shape_style.triangleup,
-    shape_size.small, "orange", shape_location.belowbar, 0, "!", "black")
-plot_shape(warn_put, "PREP-", shape_style.triangledown,
-    shape_size.small, "orange", shape_location.abovebar, 0, "!", "black")
-
-color_bar = "gray"
-if call_signal then color_bar = "lime" end
-if put_signal  then color_bar = "red"  end
-barcolor(color_bar)'''
-
-    script_hector2 = '''instrument {
-    name       = "HECTOR 2 — RSI + MACD",
-    short_name = "H2_RSI",
-    icon       = "indicators:RSI",
-    overlay    = false
-}
-
-rsi_v       = rsi(close, 14)
-macd_linea  = ema(close, 5) - ema(close, 13)
-macd_signal = ema(macd_linea, 4)
-macd_hist   = macd_linea - macd_signal
-
-rsi_color = "gray"
-if rsi_v > 50 and rsi_v < 70 then rsi_color = "lime"   end
-if rsi_v < 50 and rsi_v > 30 then rsi_color = "red"    end
-if rsi_v >= 70                then rsi_color = "orange" end
-if rsi_v <= 30                then rsi_color = "orange" end
-
-hist_color = "gray"
-if macd_hist > 0 then hist_color = "lime" end
-if macd_hist < 0 then hist_color = "red"  end
-
-plot(70,   "OB",  "red",    1, 0, style.levels, na_mode.continue)
-plot(30,   "OS",  "lime",   1, 0, style.levels, na_mode.continue)
-plot(50,   "MED", "gray",   1, 0, style.levels, na_mode.continue)
-plot(rsi_v,"RSI", rsi_color, 2)
-plot(macd_hist,   "Hist",   hist_color, 3, 0, style.histogram)
-plot(macd_linea,  "MACD",   "cyan",  1)
-plot(macd_signal, "Signal", "orange",1)
-plot(0,           "Zero",   "gray",  1, 0, style.levels, na_mode.continue)'''
-
-    h1_tab, h2_tab = st.tabs(["HECTOR 1 — Triple Confirm (overlay)", "HECTOR 2 — RSI + MACD (panel)"])
-
-    with h1_tab:
-        st.markdown("""<div class="script-card card-green">
-        <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:17px;color:#4ade80;margin-bottom:4px;">HECTOR 1 — Triple Confirm</div>
-        <div style="font-size:13px;color:#94a3b8;line-height:1.7;">
-        4 filtros: EMA Stack + MACD cruce + RSI zona + Vela confirmacion.<br>
-        <b style="color:#4ade80;">Flecha verde grande</b> = CALL — entrar proxima vela · <b style="color:#f87171;">Flecha roja grande</b> = PUT<br>
-        <b style="color:#ff9800;">Flecha naranja pequeña</b> = 3/4 filtros, prepararse
-        </div></div>""", unsafe_allow_html=True)
-        st.markdown(f'<div class="code-block">{script_hector1}</div>', unsafe_allow_html=True)
-        st.download_button("⬇ Descargar HECTOR 1.lua", script_hector1,
-            file_name="HECTOR_1_triple_confirm.lua", mime="text/plain", key="dl_h1")
-
-    with h2_tab:
-        st.markdown("""<div class="script-card card-blue">
-        <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:17px;color:#60a5fa;margin-bottom:4px;">HECTOR 2 — RSI + MACD</div>
-        <div style="font-size:13px;color:#94a3b8;line-height:1.7;">
-        Panel inferior de confirmacion. RSI coloreado por zona + histograma MACD.<br>
-        <b style="color:#4ade80;">RSI verde</b> = zona alcista · <b style="color:#f87171;">RSI rojo</b> = zona bajista · <b style="color:#ff9800;">RSI naranja</b> = extremo, precaucion
-        </div></div>""", unsafe_allow_html=True)
-        st.markdown(f'<div class="code-block">{script_hector2}</div>', unsafe_allow_html=True)
-        st.download_button("⬇ Descargar HECTOR 2.lua", script_hector2,
-            file_name="HECTOR_2_rsi_macd.lua", mime="text/plain", key="dl_h2")
-
-# ================================================================
 # TAB 5 — REGISTRO DE OPERACIONES
 # ================================================================
 with tab_ops:
@@ -1681,6 +1579,47 @@ with tab_ops:
 
     if st.session_state.ops:
         st.markdown('<div class="sec">HISTORIAL</div>', unsafe_allow_html=True)
+
+        # ── EXPORTACION (v7) ──────────────────────────────────────
+        exp1, exp2, exp3 = st.columns(3)
+        with exp1:
+            if st.session_state.ops:
+                df_ops = pd.DataFrame(st.session_state.ops)
+                csv_data = df_ops.to_csv(index=False).encode("utf-8")
+                st.download_button("📥 Descargar CSV", data=csv_data,
+                    file_name=f"hector_ops_{date.today().strftime('%Y%m%d')}.csv",
+                    mime="text/csv", use_container_width=True)
+        with exp2:
+            if st.session_state.ops:
+                g_t, p_t, n_t = calc_pnl()
+                txt_lines = [f"QQE COMMAND V7 — REPORTE {date.today().strftime('%d/%m/%Y')}\n",
+                             f"GANADO: ${g_t:.2f}  PERDIDO: ${p_t:.2f}  NETO: ${n_t:.2f}\n",
+                             f"OPERACIONES: {len(st.session_state.ops)}\n",
+                             "─"*40]
+                for o in st.session_state.ops:
+                    ic_r = "WIN" if o["resultado"]=="WIN" else "LOSS"
+                    txt_lines.append(f"{o['fecha']} {o['hora']} | {o['activo']} | {o['dir']} | {o['tipo']} | ${o['monto']:.2f} | {ic_r} | P&L: ${o['pnl']:.2f}")
+                txt_export = "\n".join(txt_lines)
+                st.download_button("📄 Descargar TXT", data=txt_export,
+                    file_name=f"hector_reporte_{date.today().strftime('%Y%m%d')}.txt",
+                    mime="text/plain", use_container_width=True)
+        with exp3:
+            if st.button("📱 Últimas 5 a Telegram", key="ops_tg_export", use_container_width=True):
+                if st.session_state.tg_on and st.session_state.tg_token:
+                    ultimas = st.session_state.ops[-5:]
+                    g_t, p_t, n_t = calc_pnl()
+                    lineas = "\n".join([f"{'✅' if o['resultado']=='WIN' else '❌'} {o['activo']} {o['dir']} ${abs(o['pnl']):.2f}" for o in ultimas])
+                    msg_ops = (f"📋 <b>ULTIMAS OPERACIONES — QQE v7</b>\n"
+                               f"━━━━━━━━━━━━━━\n"
+                               f"{lineas}\n"
+                               f"━━━━━━━━━━━━━━\n"
+                               f"NETO: <b>${n_t:.2f}</b> · Ops: {len(st.session_state.ops)}\n"
+                               f"<i>{date.today().strftime('%d/%m/%Y')}</i>")
+                    ok = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, msg_ops)
+                    st.success("Enviado!" if ok else "Error al enviar")
+                else:
+                    st.warning("Configura Telegram en el sidebar")
+
         for o in reversed(st.session_state.ops[-20:]):
             pnl_c = "#4ade80" if o["pnl"]>0 else "#f87171"
             ic_r = "✅" if o["resultado"]=="WIN" else "❌"
@@ -2060,6 +1999,6 @@ end'''
 st.markdown(f"""
 <div style="text-align:center;margin-top:24px;padding:14px;border-top:1px solid #1e3050;">
   <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#2a3a55;letter-spacing:2px;">
-    QQE COMMAND V6 · HECTOR TRADING SYSTEM · Capital: ${st.session_state.capital:.2f} · Objetivo: $50/dia
+    QQE COMMAND V7 · HECTOR TRADING SYSTEM · Capital: ${st.session_state.capital:.2f} · Objetivo: $50/dia
   </div>
 </div>""", unsafe_allow_html=True)
