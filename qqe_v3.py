@@ -1562,8 +1562,7 @@ with tab_noticias:
     # ── CALENDARIO ECONÓMICO ESTÁTICO ──────────────────────────
     st.markdown('<div class="sec">📅 PRÓXIMOS EVENTOS DE ALTO IMPACTO</div>', unsafe_allow_html=True)
 
-    import datetime as dt_mod
-    hoy = dt_mod.get_fecha_arg()
+    hoy = get_fecha_arg()
 
     calendario_eventos = [
         {"dia": "Lunes", "evento": "PMI Manufacturero EE.UU.", "impacto": "ALTO", "activos": "EUR/USD, US 500, US 30", "color": "#dc2626"},
