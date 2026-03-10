@@ -55,7 +55,7 @@ except:
     COMPONENTS_OK = False
 
 st.set_page_config(
-    page_title="QQE Command v8 — Hector",
+    page_title="QQE Command v9 — Hector",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -216,6 +216,8 @@ defaults = {
     "stop_loss_dia": 10,
     "perdida_dia": 0.0,
     "radar_bloqueado": False,
+    "racha_losses": 0,        # pérdidas consecutivas
+    "max_racha_dia": 0,       # máxima racha del día
     "autorefresh_on": False,
     "hector_results": None,
     "hector_ultimo": "",
@@ -250,6 +252,32 @@ def get_session_info():
     elif 11 <= h < 13: return "SOLAPAMIENTO",     "ACTIVO",    "#c8920a", "#2a1a00", "#fbbf24"
     elif 10 <= h < 11: return "CIERRE LONDRES",   "PRECAUCION","#c8920a", "#2a1a00", "#fbbf24"
     else:               return "MERCADO CERRADO",  "INACTIVO",  "#64748b", "#1a2535", "#94a3b8"
+
+def es_horario_operable():
+    """True solo en ventanas de alta probabilidad de profit"""
+    h = get_utc_hour()
+    return (7 <= h < 10) or (13 <= h < 16)
+
+def es_horario_aceptable():
+    """True incluye solapamiento"""
+    h = get_utc_hour()
+    return (7 <= h < 16)
+
+@st.cache_data(ttl=300)
+def get_tendencia_h1(symbol):
+    """Devuelve tendencia en H1 para confirmar señales 1min (confluencia)"""
+    try:
+        df = yf.download(symbol, period="5d", interval="1h", progress=False, auto_adjust=True)
+        if df.empty or len(df) < 20: return "LATERAL"
+        df.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns]
+        c = df["close"].dropna()
+        e20 = c.ewm(span=20, adjust=False).mean()
+        e50 = c.ewm(span=50, adjust=False).mean()
+        precio = c.iloc[-1]
+        if precio > e20.iloc[-1] > e50.iloc[-1]: return "ALCISTA"
+        if precio < e20.iloc[-1] < e50.iloc[-1]: return "BAJISTA"
+        return "LATERAL"
+    except: return "LATERAL"
 
 def enviar_telegram(token, chat_id, msg):
     try:
@@ -453,7 +481,7 @@ def analizar_activo_swing(symbol, tf="H1"):
 # SIDEBAR
 # ================================================================
 with st.sidebar:
-    st.markdown('<div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:22px;color:#c8920a;letter-spacing:2px;margin-bottom:16px;">QQE CMD v7</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:22px;color:#c8920a;letter-spacing:2px;margin-bottom:16px;">QQE CMD v9</div>', unsafe_allow_html=True)
 
     # API
     st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#4a7a99;letter-spacing:2px;margin-bottom:4px;">CLAVE API ANTHROPIC</div>', unsafe_allow_html=True)
@@ -481,6 +509,8 @@ with st.sidebar:
     perdida  = st.session_state.perdida_dia
     pct_used = min(100, int(perdida / sl_monto * 100)) if sl_monto > 0 else 0
     bar_col  = "#4ade80" if pct_used < 50 else ("#fbbf24" if pct_used < 80 else "#f87171")
+    racha    = st.session_state.get("racha_losses", 0)
+    racha_col = "#4ade80" if racha == 0 else ("#fbbf24" if racha == 1 else "#f87171")
     st.markdown(f"""
     <div style="background:#0d1525;border:1px solid #1e3050;border-radius:8px;padding:12px;margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
@@ -492,17 +522,26 @@ with st.sidebar:
         <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:17px;color:#c8920a;">${cap*0.02:.2f}</span>
       </div>
       <div class="prog-track"><div class="prog-fill" style="width:{pct_used}%;background:{bar_col};"></div></div>
-      <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:{bar_col};margin-top:3px;">Perdida: ${perdida:.2f} / SL: ${sl_monto:.2f}</div>
+      <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:{bar_col};margin-top:3px;">Pérdida: ${perdida:.2f} / SL: ${sl_monto:.2f}</div>
+      <div style="display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid #1e3050;">
+        <span style="font-family:Share Tech Mono,monospace;font-size:11px;color:#4a7a99;">RACHA LOSSES</span>
+        <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:17px;color:{racha_col};">{'🟢 0' if racha==0 else '🟡 1 — CUIDADO' if racha==1 else '🔴 '+str(racha)+' — PARAR'}</span>
+      </div>
     </div>""", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1:
         if st.button("+ Loss", key="add_loss"):
             st.session_state.perdida_dia += cap * 0.02
-            if st.session_state.perdida_dia >= sl_monto: st.session_state.radar_bloqueado = True
+            st.session_state.racha_losses = st.session_state.get("racha_losses", 0) + 1
+            if st.session_state.perdida_dia >= sl_monto or st.session_state.racha_losses >= 2:
+                st.session_state.radar_bloqueado = True
             st.rerun()
     with c2:
         if st.button("Reset", key="reset_loss"):
-            st.session_state.perdida_dia = 0.0; st.session_state.radar_bloqueado = False; st.rerun()
+            st.session_state.perdida_dia = 0.0
+            st.session_state.radar_bloqueado = False
+            st.session_state.racha_losses = 0
+            st.rerun()
 
     st.markdown("---")
 
@@ -814,7 +853,7 @@ with tab_swing:
                                f"📊 RSI: {r['rsi']:.1f}\n"
                                f"⏱ Temporalidad: {tf_sel}\n"
                                f"💵 Capital 2%: <b>${st.session_state.capital*0.02:.2f}</b>\n"
-                               f"<i>QQE Command v8 · {sesion_activa}</i>")
+                               f"<i>QQE Command v9 · {sesion_activa}</i>")
                         ok = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, msg)
                         if ok:
                             enviadas.add(key_sw)
@@ -1049,7 +1088,7 @@ Si el grafico es poco claro, decilo sin dudar."""
               </div>
               <div style="font-size:14px;color:#c8d8e8;line-height:2.1;">{texto.replace(chr(10),"<br>")}</div>
               <div style="margin-top:12px;padding-top:10px;border-top:1px solid {rbr};font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">
-                Capital: ${st.session_state.capital:.2f} · Entrada 2%: ${st.session_state.capital*0.02:.2f} · QQE Command v8
+                Capital: ${st.session_state.capital:.2f} · Entrada 2%: ${st.session_state.capital*0.02:.2f} · QQE Command v9
               </div>
             </div>""", unsafe_allow_html=True)
 
@@ -1073,7 +1112,7 @@ Si el grafico es poco claro, decilo sin dudar."""
                                   f"━━━━━━━━━━━━━━\n"
                                   f"⏱ {res_ia['tf']} · {res_ia['hora']}\n\n"
                                   + texto[:800] +
-                                  f"\n\n<i>QQE Command v8</i>")
+                                  f"\n\n<i>QQE Command v9</i>")
                         ok = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, msg_tg)
                         if ok: st.success("Enviado a Telegram!")
                         else: st.error("Error enviando a Telegram")
@@ -1177,10 +1216,15 @@ with tab_triple:
         e5  = calc_ema(c, 5)
         e13 = calc_ema(c, 13)
         e50 = calc_ema(c, 50)
-        macd_l = calc_ema(c, 5) - calc_ema(c, 13)
+        # MACD consistente con script Lua: EMA(5) - EMA(13), signal EMA(4)
+        macd_l = e5 - e13
         macd_s = calc_ema(macd_l, 4)
         macd_h = macd_l - macd_s
         rsi    = calc_rsi(c, 14)
+        # Filtro volumen: vela actual debe tener volumen > promedio últimas 10
+        vol_actual = df["volumen"].iloc[-1] if "volumen" in df.columns else 1
+        vol_avg    = df["volumen"].iloc[-11:-1].mean() if "volumen" in df.columns else 1
+        vol_ok     = vol_actual >= vol_avg * 0.8  # al menos 80% del promedio
 
         e5v = e5.iloc[-1]; e13v = e13.iloc[-1]; e50v = e50.iloc[-1]
         mh  = macd_h.iloc[-1]
@@ -1191,16 +1235,18 @@ with tab_triple:
         f2c = mh > 0
         f3c = 45 < rv < 75
         f4c = cv_ > ov_
+        f5c = vol_ok  # volumen activo
 
         f1p = e5v < e13v and e13v < e50v
         f2p = mh < 0
         f3p = 25 < rv < 55
         f4p = cv_ < ov_
+        f5p = vol_ok
 
-        nc = sum([f1c, f2c, f3c, f4c])
-        np_ = sum([f1p, f2p, f3p, f4p])
+        nc = sum([f1c, f2c, f3c, f4c, f5c])
+        np_ = sum([f1p, f2p, f3p, f4p, f5p])
 
-        if nc < 2 and np_ < 2:
+        if nc < 3 and np_ < 3:
             return None
 
         dir_ = "CALL" if nc >= np_ else "PUT"
@@ -1212,8 +1258,10 @@ with tab_triple:
             "f2": f2c if dir_ == "CALL" else f2p,
             "f3": f3c if dir_ == "CALL" else f3p,
             "f4": f4c if dir_ == "CALL" else f4p,
+            "f5": f5c if dir_ == "CALL" else f5p,
+            "vol_ok": vol_ok,
             "direccion": dir_, "filtros": filt,
-            "conf": int(50 + filt * 12),
+            "conf": int(50 + filt * 10),
             "hora": datetime.now().strftime("%H:%M:%S"),
         }
 
@@ -1222,6 +1270,15 @@ with tab_triple:
         resultados_t = []
         prog_t = st.progress(0)
         txt_t  = st.empty()
+
+        # ── ADVERTENCIA DE SESIÓN ──────────────────────────────
+        if not es_horario_operable():
+            h_utc = get_utc_hour()
+            if es_horario_aceptable():
+                st.warning(f"⚠️ Horario {h_utc}:xx UTC — Fuera de ventana óptima. Señales menos confiables. Ventanas profit: 07-10 UTC y 13-16 UTC.")
+            else:
+                st.error(f"🛑 Horario {h_utc}:xx UTC — Mercado tranquilo. Alta tasa de falsas señales. Recomendado NO operar.")
+
         for idx, activo in enumerate(activos_triple):
             prog_t.progress((idx + 1) / max(len(activos_triple), 1))
             txt_t.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#c8920a;">⏳ Escaneando {activo}... ({idx+1}/{len(activos_triple)})</div>', unsafe_allow_html=True)
@@ -1229,27 +1286,50 @@ with tab_triple:
             if res:
                 res["activo"] = activo
                 res["tipo"]   = ACTIVOS[activo]["tipo"]
+                # ── CONFLUENCIA H1 ─────────────────────────────
+                tend_h1 = get_tendencia_h1(ACTIVOS[activo]["yahoo"])
+                res["tend_h1"] = tend_h1
+                # Señal alineada con H1 = mayor confianza
+                alineado = (res["direccion"] == "CALL" and tend_h1 == "ALCISTA") or \
+                           (res["direccion"] == "PUT"  and tend_h1 == "BAJISTA")
+                res["h1_alineado"] = alineado
+                if alineado:
+                    res["conf"] = min(res["conf"] + 10, 100)
+                # Señal contra H1 = reducir confianza y marcar
+                elif tend_h1 != "LATERAL":
+                    res["conf"] = max(res["conf"] - 15, 30)
+                    res["contra_tendencia"] = True
+                else:
+                    res["contra_tendencia"] = False
+                # Sesión operativa suma confianza
+                if es_horario_operable():
+                    res["conf"] = min(res["conf"] + 5, 100)
                 resultados_t.append(res)
         prog_t.empty(); txt_t.empty()
         st.session_state["triple_results"] = resultados_t
         st.session_state["triple_ultimo"]  = datetime.now().strftime("%H:%M:%S")
+        st.session_state["triple_sesion_ok"] = es_horario_operable()
 
-        # Telegram 4/4
+        # Telegram — solo 5/5 o 4/5 alineado con H1 en horario operativo
         if st.session_state.tg_on and st.session_state.tg_token:
             enviadas = st.session_state.get("tg_enviadas", set())
             for r in resultados_t:
-                if r["filtros"] == 4:
+                calidad = r["filtros"] >= 4 and r.get("h1_alineado", False) and es_horario_operable()
+                if calidad:
                     key_tg = f"triple_{r['activo']}_{r['hora']}"
                     if key_tg not in enviadas:
                         ic = "🔺" if r["direccion"] == "CALL" else "🔻"
+                        ses_nom = get_session_info()[0]
+                        alin_txt = "✅ H1 ALINEADO" if r.get("h1_alineado") else "⚠ H1 LATERAL"
                         msg = (f"{ic} <b>TRIPLE CONFIRM — {r['activo']}</b>\n"
                                f"━━━━━━━━━━━━━━\n"
-                               f"📊 {r['direccion']} — 4/4 ✅\n"
+                               f"📊 {r['direccion']} — {r['filtros']}/5 · {alin_txt}\n"
+                               f"📈 Tendencia H1: {r.get('tend_h1','?')}\n"
                                f"💰 Precio: {r['precio']:.5f}\n"
-                               f"📊 RSI: {r['rsi']:.1f}\n"
+                               f"📊 RSI: {r['rsi']:.1f} · Confianza: {r['conf']}%\n"
                                f"💵 Entrada 1%: <b>${st.session_state.capital*0.01:.2f}</b>\n"
-                               f"⏱ Exp: 1 min · 🕐 {r['hora']}\n"
-                               f"<i>QQE Command v8</i>")
+                               f"⏱ Exp: 1 min · 🕐 {r['hora']} · {ses_nom}\n"
+                               f"<i>QQE Command v9</i>")
                         ok = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, msg)
                         if ok:
                             enviadas.add(key_tg)
@@ -1273,7 +1353,7 @@ with tab_triple:
         </div>
         """, unsafe_allow_html=True)
 
-        # SEÑALES 4/4 — destacadas arriba en grande
+        # SEÑALES ≥4 — destacadas arriba en grande
         if completos_t:
             st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#4ade80;letter-spacing:2px;margin-bottom:8px;">⚡ SEÑALES COMPLETAS — ENTRAR AHORA</div>', unsafe_allow_html=True)
             for r in completos_t:
@@ -1282,46 +1362,66 @@ with tab_triple:
                 ic      = "🔺" if es_call else "🔻"
                 tipo_col = {"forex":"#60a5fa","commodity":"#fbbf24","index":"#a78bfa","crypto":"#fb923c"}.get(r["tipo"],"#94a3b8")
                 tipo_lbl = {"forex":"FOREX","commodity":"MATERIA PRIMA","index":"INDICE","crypto":"CRYPTO"}.get(r["tipo"],r["tipo"].upper())
+                alineado = r.get("h1_alineado", False)
+                tend_h1  = r.get("tend_h1", "?")
+                contra   = r.get("contra_tendencia", False)
+                vol_ok   = r.get("vol_ok", True)
+                # Color borde: verde brillante si alineado, naranja si contra
+                borde_col = col_d if not contra else "#ff9800"
+                # Etiqueta de calidad
+                if alineado and es_horario_operable():
+                    calidad_label = '<span style="background:#16a34a;color:#fff;padding:3px 10px;border-radius:6px;font-family:Share Tech Mono,monospace;font-size:10px;margin-left:8px;">⭐ ALTA CALIDAD</span>'
+                elif contra:
+                    calidad_label = '<span style="background:#c8920a;color:#000;padding:3px 10px;border-radius:6px;font-family:Share Tech Mono,monospace;font-size:10px;margin-left:8px;">⚠ CONTRA H1</span>'
+                else:
+                    calidad_label = ''
                 st.markdown(f"""
                 <div style="background:linear-gradient(135deg,{'#041a0c' if es_call else '#1a0404'} 0%,#0d1525 100%);
-                     border:2px solid {col_d};border-radius:14px;padding:18px 22px;margin-bottom:12px;">
+                     border:2px solid {borde_col};border-radius:14px;padding:18px 22px;margin-bottom:12px;">
                   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
                     <div>
                       <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:32px;color:#c8d8e8;">{r['activo']}</span>
                       <span style="font-family:Share Tech Mono,monospace;font-size:11px;color:{tipo_col};margin-left:12px;">{tipo_lbl}</span>
+                      {calidad_label}
                     </div>
                     <div style="display:flex;align-items:center;gap:16px;">
                       <div style="text-align:center;">
                         <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:42px;color:{col_d};line-height:1;">{ic} {r['direccion']}</div>
-                        <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:{col_d};">ENTRAR AHORA</div>
+                        <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:{col_d};">{'⚡ ENTRAR AHORA' if not contra else '⚠ REVISAR — CONTRA H1'}</div>
                       </div>
-                      <div style="text-align:center;background:#060c18;border:1px solid {col_d};border-radius:10px;padding:10px 16px;">
-                        <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:32px;color:{col_d};">4/4</div>
+                      <div style="text-align:center;background:#060c18;border:1px solid {borde_col};border-radius:10px;padding:10px 16px;">
+                        <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:32px;color:{col_d};">{r['filtros']}/5</div>
                         <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">FILTROS</div>
                       </div>
                     </div>
                   </div>
-                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
-                    {''.join([f'<div style="background:#060c18;border:1px solid {"#16a34a" if r[f"f{i+1}"] else "#dc2626"};border-radius:8px;padding:10px;text-align:center;"><div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">{lbl}</div><div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:22px;color:{"#4ade80" if r[f"f{i+1}"] else "#dc2626"};">{"✓" if r[f"f{i+1}"] else "✗"}</div></div>' for i,(lbl) in enumerate(["EMA 5/13/50","MACD HIST","RSI ZONA","VELA"])])}
+                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
+                    {''.join([f'<div style="background:#060c18;border:1px solid {"#16a34a" if r.get(f"f{i+1}",False) else "#dc2626"};border-radius:8px;padding:10px;text-align:center;"><div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">{lbl}</div><div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:20px;color:{"#4ade80" if r.get(f"f{i+1}",False) else "#dc2626"};">{"✓" if r.get(f"f{i+1}",False) else "✗"}</div></div>' for i,lbl in enumerate(["EMA 5/13/50","MACD HIST","RSI ZONA","VELA","VOLUMEN"])])}
                   </div>
-                  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+                  <!-- H1 Confluencia + métricas -->
+                  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">
                     <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
                       <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">PRECIO</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:16px;color:#c8d8e8;">{r['precio']:.5f}</div>
+                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8d8e8;">{r['precio']:.5f}</div>
                     </div>
                     <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
                       <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">RSI</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:16px;color:{col_d};">{r['rsi']:.1f}</div>
+                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:{col_d};">{r['rsi']:.1f}</div>
+                    </div>
+                    <div style="background:#060c18;border:1px solid {'#16a34a' if alineado else '#c8920a' if contra else '#1e3050'};border-radius:6px;padding:8px;text-align:center;">
+                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">H1 TREND</div>
+                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;color:{'#4ade80' if alineado else '#ff9800' if contra else '#94a3b8'};">{'✓ ' if alineado else '✗ '}{tend_h1}</div>
+                    </div>
+                    <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
+                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">CONFIANZA</div>
+                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:{col_d};">{r['conf']}%</div>
                     </div>
                     <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
                       <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">ENTRADA 1%</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:16px;color:#c8920a;">${st.session_state.capital*0.01:.2f}</div>
-                    </div>
-                    <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
-                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">EXPIRACION</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:16px;color:#c8d8e8;">1 min</div>
+                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8920a;">${st.session_state.capital*0.01:.2f}</div>
                     </div>
                   </div>
+                  {'<div style="background:#0a3020;border:1px solid #16a34a;border-radius:6px;padding:8px;margin-top:8px;font-family:Share Tech Mono,monospace;font-size:12px;color:#4ade80;">⚡ SEÑAL COMPLETA + H1 ALINEADO — Máxima calidad. Entrar en próxima vela.</div>' if alineado and not contra else '<div style="background:#2a1a00;border:1px solid #ff9800;border-radius:6px;padding:8px;margin-top:8px;font-family:Share Tech Mono,monospace;font-size:12px;color:#fbbf24;">⚠ Señal técnica OK pero va contra tendencia H1. Reducir monto a 0.5% o esperar.</div>' if contra else '<div style="background:#0a2030;border:1px solid #60a5fa;border-radius:6px;padding:8px;margin-top:8px;font-family:Share Tech Mono,monospace;font-size:12px;color:#60a5fa;">📊 Señal completa. H1 lateral — válido, pero preferir activos con H1 alineado.</div>'}
                 </div>""", unsafe_allow_html=True)
 
         # SEÑALES 3/4 — más pequeñas
@@ -1665,7 +1765,7 @@ Be specific and realistic. Base analysis on what typically moves {noticias_activ
                            f"🔺 Prob. suba: {prob_suba}% | 🔻 Prob. baja: {prob_baja}%\n"
                            f"⚠ Riesgo: {an.get('riesgo','')}\n\n"
                            f"📝 {an.get('resumen','')}\n\n"
-                           f"<i>QQE Command v8 — Noticias IA</i>")
+                           f"<i>QQE Command v9 — Noticias IA</i>")
                 ok_not = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, msg_not)
                 if ok_not:
                     st.success("✅ Enviado a Telegram")
@@ -1722,7 +1822,8 @@ with tab_ops:
     with c1: act_op = st.selectbox("Activo", list(ACTIVOS.keys()), key="op_act")
     with c2: dir_op = st.selectbox("Dir", ["CALL","PUT"], key="op_dir")
     with c3: tipo_op = st.selectbox("Tipo", ["1MIN","SWING H1","SWING H4"], key="op_tipo")
-    with c4: monto_op = st.number_input("Monto $", min_value=1.0, value=round(capital*0.02,2), step=1.0, key="op_monto")
+    _monto_default = max(1.0, round(capital*0.02, 2))
+    with c4: monto_op = st.number_input("Monto $", min_value=1.0, value=_monto_default, step=1.0, key="op_monto")
     with c5: res_op = st.selectbox("Result", ["WIN","LOSS","—"], key="op_res")
     with c6: pnl_op = st.number_input("P&L $", value=0.0, step=1.0, key="op_pnl")
 
@@ -1736,6 +1837,27 @@ with tab_ops:
             })
             if res_op == "LOSS":
                 st.session_state.perdida_dia += abs(pnl_final)
+                st.session_state.racha_losses += 1
+                st.session_state.max_racha_dia = max(
+                    st.session_state.max_racha_dia,
+                    st.session_state.racha_losses
+                )
+                # REGLA: 2 pérdidas consecutivas = bloqueo automático
+                if st.session_state.racha_losses >= 2:
+                    st.session_state.radar_bloqueado = True
+                    if st.session_state.tg_on and st.session_state.tg_token:
+                        enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat,
+                            f"🛑 <b>STOP — 2 PÉRDIDAS CONSECUTIVAS</b>\n"
+                            f"Regla HECTOR: detener operaciones por hoy.\n"
+                            f"Pérdida del día: ${st.session_state.perdida_dia:.2f}\n"
+                            f"<i>QQE Command v9</i>")
+            else:
+                # WIN resetea racha
+                st.session_state.racha_losses = 0
+            # Stop loss diario
+            sl_monto_check = st.session_state.capital * (st.session_state.stop_loss_dia / 100)
+            if st.session_state.perdida_dia >= sl_monto_check:
+                st.session_state.radar_bloqueado = True
             st.rerun()
 
     if st.session_state.ops:
@@ -1822,7 +1944,7 @@ with tab_diario:
                     for e in reversed(ultimas):
                         msg_tg += f"\n🕐 {e.get('hora','?')} | {e.get('tipo','?')} | {e.get('activo','?')}\n"
                         msg_tg += e.get('texto','')[:200] + ("..." if len(e.get('texto','')) > 200 else "") + "\n"
-                    msg_tg += f"\n<i>QQE Command v8 — Goya, Corrientes</i>"
+                    msg_tg += f"\n<i>QQE Command v9 — Goya, Corrientes</i>"
                     ok = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, msg_tg[:4000])
                     if ok: st.success("Bitacora enviada a Telegram!")
                     else:  st.error("Error — verificar token y chat ID en sidebar")
