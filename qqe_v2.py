@@ -13,6 +13,8 @@ import yfinance as yf
 import json
 import os
 from datetime import datetime, timezone, date, timedelta
+# Zona horaria Argentina = UTC-3 (no cambia con horario de verano)
+TZ_ARG = timezone(timedelta(hours=-3))
 
 # ================================================================
 # PERSISTENCIA LOCAL DE CREDENCIALES (sin pedir cada vez)
@@ -245,6 +247,16 @@ def get_ia_ok():
 def get_utc_hour():
     return datetime.now(timezone.utc).hour
 
+def get_hora_arg():
+    """Hora local Argentina (UTC-3)"""
+    return datetime.now(TZ_ARG)
+
+def get_hora_arg_str():
+    return datetime.now(TZ_ARG).strftime("%H:%M")
+
+def get_fecha_arg():
+    return datetime.now(TZ_ARG).date()
+
 def get_session_info():
     h = get_utc_hour()
     if 7 <= h < 10:    return "SESION LONDRES",   "OPERAR",    "#16a34a", "#0a3020", "#4ade80"
@@ -409,7 +421,7 @@ def analizar_activo_1min(symbol):
         "precio": precio, "rsi": rsi_v, "atr": atr_v, "volatilidad": volatil,
         "hist_macd": hist_v, "ema3": ema3_now, "ema8": ema8_now,
         "senales": senales, "mejor": mejor,
-        "hora": datetime.now().strftime("%H:%M:%S"),
+        "hora": datetime.now(TZ_ARG).strftime("%H:%M:%S"),
     }
 
 def analizar_activo_swing(symbol, tf="H1"):
@@ -473,7 +485,7 @@ def analizar_activo_swing(symbol, tf="H1"):
         "tendencia": tend, "tend_col": tend_col,
         "direccion": direccion, "sl": sl, "tp": tp,
         "hist_macd": hist_v, "score": min(score, 100),
-        "hora": datetime.now().strftime("%H:%M"),
+        "hora": datetime.now(TZ_ARG).strftime("%H:%M"),
         "tf": tf,
     }
 
@@ -574,7 +586,7 @@ with st.sidebar:
 # HEADER
 # ================================================================
 ses_nom, ses_est, ses_col, ses_bg, ses_border = get_session_info()
-hora_utc = datetime.now(timezone.utc).strftime("%H:%M UTC")
+hora_utc = datetime.now(TZ_ARG).strftime("%H:%M ARG")
 _, cp, np_ = calc_pnl()
 
 st.markdown(f"""
@@ -650,7 +662,7 @@ with tab_scan1:
         prog.empty(); txt.empty()
 
         st.session_state.scan_results  = resultados
-        st.session_state.scan_ultimo   = datetime.now().strftime("%H:%M:%S")
+        st.session_state.scan_ultimo   = datetime.now(TZ_ARG).strftime("%H:%M:%S")
         st.session_state.alertas_bin   = [r for r in resultados if r["mejor"]["conf"] >= 70]
 
         # Telegram
@@ -748,6 +760,7 @@ with tab_swing:
 
     # ── ASESORAMIENTO DE TEMPORALIDAD ────────────────────────────
     hora_utc = datetime.now(timezone.utc).hour
+    hora_arg_disp = datetime.now(TZ_ARG).strftime("%H:%M")
     if 7 <= hora_utc < 10:
         sesion_activa = "LONDRES"
         ses_col = "#4ade80"
@@ -779,7 +792,7 @@ with tab_swing:
       <div style="text-align:right;">
         <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">TEMPORALIDAD OPTIMA</div>
         <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:28px;color:{ses_col};">{tf_recom}</div>
-        <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">{hora_utc:02d}:xx UTC</div>
+        <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">{hora_arg_disp} ARG · {hora_utc:02d}:xx UTC</div>
       </div>
     </div>""", unsafe_allow_html=True)
 
@@ -1050,7 +1063,7 @@ Si el grafico es poco claro, decilo sin dudar."""
                         if resp.status_code == 200:
                             texto = resp.json()["content"][0]["text"]
                             st.session_state[f"swing_ia_resp_{activo_ia}"] = {
-                                "texto": texto, "hora": datetime.now().strftime("%H:%M"),
+                                "texto": texto, "hora": datetime.now(TZ_ARG).strftime("%H:%M"),
                                 "activo": activo_ia, "iqopt": iqopt_name, "tf": tf_ia
                             }
                             st.rerun()
@@ -1096,7 +1109,7 @@ Si el grafico es poco claro, decilo sin dudar."""
             with col_g1:
                 if st.button("📓 Guardar en Diario", key="guardar_diario_ia"):
                     st.session_state.diario.append({
-                        "fecha": date.today().strftime("%d/%m/%Y"),
+                        "fecha": get_fecha_arg().strftime("%d/%m/%Y"),
                         "hora":  res_ia["hora"],
                         "tipo":  "ANALISIS IA",
                         "activo": res_ia["iqopt"],
@@ -1262,7 +1275,7 @@ with tab_triple:
             "vol_ok": vol_ok,
             "direccion": dir_, "filtros": filt,
             "conf": int(50 + filt * 10),
-            "hora": datetime.now().strftime("%H:%M:%S"),
+            "hora": datetime.now(TZ_ARG).strftime("%H:%M:%S"),
         }
 
     # ── SCAN ────────────────────────────────────────────────────
@@ -1307,7 +1320,7 @@ with tab_triple:
                 resultados_t.append(res)
         prog_t.empty(); txt_t.empty()
         st.session_state["triple_results"] = resultados_t
-        st.session_state["triple_ultimo"]  = datetime.now().strftime("%H:%M:%S")
+        st.session_state["triple_ultimo"]  = datetime.now(TZ_ARG).strftime("%H:%M:%S")
         st.session_state["triple_sesion_ok"] = es_horario_operable()
 
         # Telegram — solo 5/5 o 4/5 alineado con H1 en horario operativo
@@ -1550,7 +1563,7 @@ with tab_noticias:
     st.markdown('<div class="sec">📅 PRÓXIMOS EVENTOS DE ALTO IMPACTO</div>', unsafe_allow_html=True)
 
     import datetime as dt_mod
-    hoy = dt_mod.date.today()
+    hoy = dt_mod.get_fecha_arg()
 
     calendario_eventos = [
         {"dia": "Lunes", "evento": "PMI Manufacturero EE.UU.", "impacto": "ALTO", "activos": "EUR/USD, US 500, US 30", "color": "#dc2626"},
@@ -1642,7 +1655,11 @@ Be specific and realistic. Base analysis on what typically moves {noticias_activ
                     import requests as req_not
                     resp_not = req_not.post(
                         "https://api.anthropic.com/v1/messages",
-                        headers={"Content-Type": "application/json"},
+                        headers={
+                            "Content-Type": "application/json",
+                            "x-api-key": st.session_state.api_key,
+                            "anthropic-version": "2023-06-01"
+                        },
                         json={
                             "model": "claude-sonnet-4-20250514",
                             "max_tokens": 1500,
@@ -1650,12 +1667,17 @@ Be specific and realistic. Base analysis on what typically moves {noticias_activ
                         },
                         timeout=30
                     )
-                    data_not = resp_not.json()
-                    raw_not  = data_not["content"][0]["text"].strip()
-                    raw_not  = raw_not.replace("```json", "").replace("```", "").strip()
-                    an       = __import__("json").loads(raw_not)
-                    st.session_state["noticias_analisis"] = an
-                    st.session_state["noticias_activo_sel"] = noticias_activo
+                    if resp_not.status_code != 200:
+                        st.error(f"Error API ({resp_not.status_code}): {resp_not.text[:200]}")
+                        st.session_state["noticias_analisis"] = None
+                    else:
+                        data_not = resp_not.json()
+                        raw_not  = data_not["content"][0]["text"].strip()
+                        raw_not  = raw_not.replace("```json", "").replace("```", "").strip()
+                        import json as json_mod
+                        an       = json_mod.loads(raw_not)
+                        st.session_state["noticias_analisis"] = an
+                        st.session_state["noticias_activo_sel"] = noticias_activo
                 except Exception as e_not:
                     st.error(f"Error en análisis IA: {e_not}")
                     st.session_state["noticias_analisis"] = None
@@ -1831,7 +1853,7 @@ with tab_ops:
         if res_op != "—":
             pnl_final = abs(pnl_op) if res_op=="WIN" else -abs(monto_op if pnl_op==0 else pnl_op)
             st.session_state.ops.append({
-                "fecha": date.today().strftime("%d/%m"), "hora": datetime.now().strftime("%H:%M"),
+                "fecha": get_fecha_arg().strftime("%d/%m"), "hora": datetime.now(TZ_ARG).strftime("%H:%M"),
                 "activo": act_op, "dir": dir_op, "tipo": tipo_op,
                 "monto": monto_op, "resultado": res_op, "pnl": pnl_final,
             })
@@ -1893,8 +1915,8 @@ with tab_diario:
         if st.button("GUARDAR", key="diario_save", use_container_width=True):
             if nota_txt.strip():
                 st.session_state.diario.append({
-                    "fecha": date.today().strftime("%d/%m/%Y"),
-                    "hora":  datetime.now().strftime("%H:%M"),
+                    "fecha": get_fecha_arg().strftime("%d/%m/%Y"),
+                    "hora":  datetime.now(TZ_ARG).strftime("%H:%M"),
                     "tipo":  nota_tipo, "activo": "—", "texto": nota_txt, "tf": "—"
                 })
                 st.rerun()
@@ -1911,14 +1933,14 @@ with tab_diario:
             st.download_button(
                 "⬇ Descargar CSV",
                 csv_diario,
-                file_name=f"bitacora_hector_{date.today().strftime('%Y%m%d')}.csv",
+                file_name=f"bitacora_hector_{get_fecha_arg().strftime('%Y%m%d')}.csv",
                 mime="text/csv",
                 use_container_width=True,
                 key="dl_bitacora_csv"
             )
         with col_exp2:
             # Descargar como TXT legible
-            txt_lines = [f"BITACORA HECTOR — {date.today().strftime('%d/%m/%Y')}", "="*40]
+            txt_lines = [f"BITACORA HECTOR — {get_fecha_arg().strftime('%d/%m/%Y')}", "="*40]
             for e in st.session_state.diario:
                 txt_lines.append(f"\n{e.get('fecha','?')} {e.get('hora','?')} | {e.get('tipo','?')} | {e.get('activo','?')} {e.get('tf','')}")
                 txt_lines.append(e.get('texto',''))
@@ -1927,7 +1949,7 @@ with tab_diario:
             st.download_button(
                 "⬇ Descargar TXT",
                 txt_export,
-                file_name=f"bitacora_hector_{date.today().strftime('%Y%m%d')}.txt",
+                file_name=f"bitacora_hector_{get_fecha_arg().strftime('%Y%m%d')}.txt",
                 mime="text/plain",
                 use_container_width=True,
                 key="dl_bitacora_txt"
@@ -1937,7 +1959,7 @@ with tab_diario:
                 if st.session_state.tg_token:
                     # Enviar las últimas 5 entradas
                     ultimas = st.session_state.diario[-5:]
-                    msg_tg = f"📓 <b>BITACORA HECTOR — {date.today().strftime('%d/%m/%Y')}</b>\n"
+                    msg_tg = f"📓 <b>BITACORA HECTOR — {get_fecha_arg().strftime('%d/%m/%Y')}</b>\n"
                     msg_tg += f"━━━━━━━━━━━━━━\n"
                     msg_tg += f"Total registros: {len(st.session_state.diario)}\n\n"
                     msg_tg += "<b>Ultimas 5 entradas:</b>\n"
