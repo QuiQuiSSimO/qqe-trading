@@ -55,7 +55,7 @@ except:
     COMPONENTS_OK = False
 
 st.set_page_config(
-    page_title="QQE Command v5 — Hector",
+    page_title="QQE Command v6 — Hector",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -217,6 +217,8 @@ defaults = {
     "perdida_dia": 0.0,
     "radar_bloqueado": False,
     "autorefresh_on": False,
+    "hector_results": None,
+    "hector_ultimo": "",
     "autorefresh_min": 5,
     "ultima_alerta_son": "",
 }
@@ -261,12 +263,26 @@ def calc_pnl():
 # INDICADORES TECNICOS
 # ================================================================
 ACTIVOS = {
-    "XAU/USD":   {"yahoo": "GC=F",      "tipo": "commodity"},
+    # FOREX
     "EUR/USD":   {"yahoo": "EURUSD=X",  "tipo": "forex"},
     "GBP/USD":   {"yahoo": "GBPUSD=X",  "tipo": "forex"},
-    "NAS100":    {"yahoo": "NQ=F",      "tipo": "index"},
-    "BTC/USD":   {"yahoo": "BTC-USD",   "tipo": "crypto"},
+    "USD/JPY":   {"yahoo": "JPY=X",     "tipo": "forex"},
+    "AUD/USD":   {"yahoo": "AUDUSD=X",  "tipo": "forex"},
+    "USD/CAD":   {"yahoo": "CAD=X",     "tipo": "forex"},
+    "EUR/GBP":   {"yahoo": "EURGBP=X",  "tipo": "forex"},
+    # MATERIAS PRIMAS
+    "XAU/USD":   {"yahoo": "GC=F",      "tipo": "commodity"},
+    "XAG/USD":   {"yahoo": "SI=F",      "tipo": "commodity"},
     "CRUDE OIL": {"yahoo": "CL=F",      "tipo": "commodity"},
+    "NAT GAS":   {"yahoo": "NG=F",      "tipo": "commodity"},
+    "COPPER":    {"yahoo": "HG=F",      "tipo": "commodity"},
+    # INDICES
+    "NAS100":    {"yahoo": "NQ=F",      "tipo": "index"},
+    "SP500":     {"yahoo": "ES=F",      "tipo": "index"},
+    "DOW30":     {"yahoo": "YM=F",      "tipo": "index"},
+    # CRYPTO
+    "BTC/USD":   {"yahoo": "BTC-USD",   "tipo": "crypto"},
+    "ETH/USD":   {"yahoo": "ETH-USD",   "tipo": "crypto"},
 }
 
 @st.cache_data(ttl=60)
@@ -536,9 +552,10 @@ background:#0d1525;border:1px solid #1e3050;border-radius:12px;padding:14px 20px
 # ================================================================
 # TABS
 # ================================================================
-tab_scan1, tab_swing, tab_swing_ia, tab_strat, tab_ops, tab_diario, tab_binarias, tab_copy, tab_codigos = st.tabs([
+tab_scan1, tab_swing, tab_swing_ia, tab_strat, tab_hector, tab_ops, tab_diario, tab_binarias, tab_copy, tab_codigos = st.tabs([
     "⚡ SCANNER 1MIN", "📈 SWING SCANNER", "🖼 SWING IA GRAFICO",
     "🎯 ESTRATEGIA EMA+QQE",
+    "🔺 HECTOR SCANNER",
     "📋 REGISTRO", "📓 DIARIO", "🤖 SCRIPTS LUA", "👥 COPY", "💻 CODIGOS QQE"
 ])
 
@@ -1272,6 +1289,355 @@ end'''
 
 # ================================================================
 # ================================================================
+# TAB HECTOR — SCANNER TRIPLE CONFIRM + SCRIPTS LUA
+# ================================================================
+with tab_hector:
+    st.markdown('<div class="sec">🔺 HECTOR SCANNER — TRIPLE CONFIRM EN VIVO</div>', unsafe_allow_html=True)
+
+    # Descripcion
+    st.markdown("""
+    <div style="background:#0d1525;border:1px solid #c8920a;border-radius:12px;padding:14px 18px;margin-bottom:16px;">
+      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:18px;color:#c8920a;margin-bottom:6px;">Estrategia HECTOR 1 — Triple Confirm</div>
+      <div style="font-size:14px;color:#94a3b8;line-height:1.9;">
+        Misma logica que el script IQ Option: <b style="color:#c8920a;">EMA Stack + MACD + RSI + Vela</b><br>
+        <b style="color:#4ade80;">🔺 CALL</b>: EMA5>EMA13>EMA50 · MACD hist positivo · RSI 45–75 · vela alcista<br>
+        <b style="color:#f87171;">🔻 PUT</b>: EMA5&lt;EMA13&lt;EMA50 · MACD hist negativo · RSI 25–55 · vela bajista<br>
+        <b style="color:#ff9800;">⚠ AVISO</b>: 3/4 filtros activos — prepararse, esperar confirmacion
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Controles scanner
+    c1, c2, c3 = st.columns([2, 2, 3])
+    with c1:
+        hector_btn = st.button("🔺 ESCANEAR AHORA", key="hector_scan_btn", use_container_width=True)
+    with c2:
+        tipo_filtro = st.selectbox("Filtrar por tipo", ["Todos", "forex", "commodity", "index", "crypto"], key="hector_tipo")
+    with c3:
+        # Filtrar activos por tipo seleccionado
+        if tipo_filtro == "Todos":
+            activos_disponibles = list(ACTIVOS.keys())
+        else:
+            activos_disponibles = [a for a, v in ACTIVOS.items() if v["tipo"] == tipo_filtro]
+        activos_hector = st.multiselect(
+            "Activos",
+            list(ACTIVOS.keys()),
+            default=activos_disponibles[:8] if len(activos_disponibles) >= 8 else activos_disponibles,
+            key="act_hector"
+        )
+
+    # Funcion analisis HECTOR
+    def analizar_hector(symbol):
+        df = obtener_datos_1min(symbol)
+        if df is None or len(df) < 55:
+            return None
+        c = df["cierre"]
+        o = df["apertura"]
+        h = df["maximo"]
+        l = df["minimo"]
+
+        e5  = calc_ema(c, 5)
+        e13 = calc_ema(c, 13)
+        e50 = calc_ema(c, 50)
+
+        macd_l = calc_ema(c, 5) - calc_ema(c, 13)
+        macd_s = calc_ema(macd_l, 4)
+        macd_h = macd_l - macd_s
+
+        rsi = calc_rsi(c, 14)
+
+        # Valores actuales
+        e5v   = e5.iloc[-1];   e13v  = e13.iloc[-1];  e50v  = e50.iloc[-1]
+        mh    = macd_h.iloc[-1]
+        rv    = rsi.iloc[-1]
+        cv    = c.iloc[-1];    ov    = o.iloc[-1]
+        hv    = h.iloc[-1];    lv    = l.iloc[-1]
+
+        rango  = hv - lv
+        cuerpo = abs(cv - ov)
+
+        # 4 filtros CALL
+        f1c = e5v > e13v and e13v > e50v
+        f2c = mh > 0
+        f3c = rv > 45 and rv < 75
+        f4c = cv > ov
+
+        # 4 filtros PUT
+        f1p = e5v < e13v and e13v < e50v
+        f2p = mh < 0
+        f3p = rv > 25 and rv < 55
+        f4p = cv < ov
+
+        nc = sum([f1c, f2c, f3c, f4c])
+        np = sum([f1p, f2p, f3p, f4p])
+
+        call_sig = f1c and f2c and f3c and f4c
+        put_sig  = f1p and f2p and f3p and f4p
+
+        if nc < 2 and np < 2:
+            return None
+
+        direccion = "CALL" if nc >= np else "PUT"
+        filtros   = nc if direccion == "CALL" else np
+        conf      = int(50 + filtros * 12)
+
+        return {
+            "precio": cv, "rsi": rv, "macd_hist": mh,
+            "e5": e5v, "e13": e13v, "e50": e50v,
+            "f1": f1c if direccion == "CALL" else f1p,
+            "f2": f2c if direccion == "CALL" else f2p,
+            "f3": f3c if direccion == "CALL" else f3p,
+            "f4": f4c if direccion == "CALL" else f4p,
+            "direccion": direccion,
+            "filtros": filtros,
+            "conf": conf,
+            "call_completo": call_sig,
+            "put_completo":  put_sig,
+            "hora": datetime.now().strftime("%H:%M:%S"),
+        }
+
+    if hector_btn:
+        resultados_h = []
+        prog_h = st.progress(0)
+        txt_h  = st.empty()
+        for idx, activo in enumerate(activos_hector):
+            prog_h.progress((idx + 1) / max(len(activos_hector), 1))
+            txt_h.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#c8920a;">⏳ Escaneando {activo}... ({idx+1}/{len(activos_hector)})</div>', unsafe_allow_html=True)
+            res = analizar_hector(ACTIVOS[activo]["yahoo"])
+            if res:
+                res["activo"] = activo
+                res["tipo"]   = ACTIVOS[activo]["tipo"]
+                resultados_h.append(res)
+        prog_h.empty(); txt_h.empty()
+        st.session_state["hector_results"] = resultados_h
+        st.session_state["hector_ultimo"]  = datetime.now().strftime("%H:%M:%S")
+
+        # Telegram
+        if st.session_state.tg_on and st.session_state.tg_token:
+            for r in resultados_h:
+                if r["filtros"] == 4:
+                    key_tg = f"hector_{r['activo']}_{r['hora']}"
+                    enviadas = st.session_state.get("tg_enviadas", set())
+                    if key_tg not in enviadas:
+                        ic = "🔺" if r["direccion"] == "CALL" else "🔻"
+                        msg = (f"{ic} <b>HECTOR TRIPLE CONFIRM — {r['activo']}</b>\n"
+                               f"━━━━━━━━━━━━━━\n"
+                               f"📊 {r['direccion']} — 4/4 filtros ✅\n"
+                               f"💰 Precio: {r['precio']:.5f}\n"
+                               f"📊 RSI: {r['rsi']:.1f}\n"
+                               f"💵 Entrada 1%: <b>${st.session_state.capital*0.01:.2f}</b>\n"
+                               f"⏱ Expiracion: 1 min\n"
+                               f"🕐 {r['hora']}\n"
+                               f"<i>QQE Command v6 — HECTOR</i>")
+                        ok = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, msg)
+                        if ok:
+                            enviadas.add(key_tg)
+                            st.session_state.tg_enviadas = enviadas
+        st.rerun()
+
+    # Mostrar resultados
+    if st.session_state.get("hector_results") is not None:
+        res_list = st.session_state["hector_results"]
+        ultimo   = st.session_state.get("hector_ultimo", "")
+
+        # Resumen
+        completos = [r for r in res_list if r["filtros"] == 4]
+        avisos    = [r for r in res_list if r["filtros"] == 3]
+        st.markdown(f"""
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
+          <div class="kpi"><div class="kpi-label">ULTIMO SCAN</div><div class="kpi-value" style="font-size:20px;color:#4a7a99;">{ultimo}</div></div>
+          <div class="kpi"><div class="kpi-label">SEÑALES 4/4</div><div class="kpi-value" style="color:{'#4ade80' if completos else '#4a7a99'};">{len(completos)}</div></div>
+          <div class="kpi"><div class="kpi-label">AVISOS 3/4</div><div class="kpi-value" style="color:{'#ff9800' if avisos else '#4a7a99'};">{len(avisos)}</div></div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        if not res_list:
+            st.markdown('<div style="text-align:center;padding:40px;color:#4a7a99;font-family:Share Tech Mono,monospace;font-size:13px;">Sin señales activas en este momento. Intentá durante sesion Londres (07-10 UTC) o NY (13-16 UTC).</div>', unsafe_allow_html=True)
+        else:
+            for r in sorted(res_list, key=lambda x: x["filtros"], reverse=True):
+                es_call    = r["direccion"] == "CALL"
+                completo   = r["filtros"] == 4
+                card_cls   = "signal-call" if es_call else "signal-put"
+                col_d      = "#4ade80" if es_call else "#f87171"
+                ic         = "🔺" if es_call else "🔻"
+                tipo_badge = {"forex": "FOREX", "commodity": "MATERIA PRIMA", "index": "INDICE", "crypto": "CRYPTO"}.get(r["tipo"], r["tipo"].upper())
+                tipo_col   = {"forex": "#60a5fa", "commodity": "#fbbf24", "index": "#a78bfa", "crypto": "#fb923c"}.get(r["tipo"], "#94a3b8")
+
+                st.markdown(f"""
+                <div class="{card_cls}" style="{'border:2px solid ' + col_d + ';' if completo else ''}margin-bottom:10px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px;">
+                    <div>
+                      <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:22px;color:#c8d8e8;">{r['activo']}</span>
+                      <span style="font-family:Share Tech Mono,monospace;font-size:11px;color:{tipo_col};margin-left:10px;">{tipo_badge}</span>
+                      <span style="font-family:Share Tech Mono,monospace;font-size:12px;color:{col_d};margin-left:10px;">{ic} {r['direccion']}</span>
+                    </div>
+                    <div style="text-align:right;">
+                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:28px;color:{col_d};">{r['filtros']}/4</div>
+                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">{'✅ ENTRAR' if completo else '⚠ ESPERAR'}</div>
+                    </div>
+                  </div>
+
+                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:10px;">
+                    <div style="background:#060c18;border:1px solid {'#16a34a' if r['f1'] else '#1e3050'};border-radius:6px;padding:8px;text-align:center;">
+                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">EMA STACK</div>
+                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:18px;color:{'#4ade80' if r['f1'] else '#374151'};">{'✓' if r['f1'] else '✗'}</div>
+                    </div>
+                    <div style="background:#060c18;border:1px solid {'#16a34a' if r['f2'] else '#1e3050'};border-radius:6px;padding:8px;text-align:center;">
+                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">MACD</div>
+                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:18px;color:{'#4ade80' if r['f2'] else '#374151'};">{'✓' if r['f2'] else '✗'}</div>
+                    </div>
+                    <div style="background:#060c18;border:1px solid {'#16a34a' if r['f3'] else '#1e3050'};border-radius:6px;padding:8px;text-align:center;">
+                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">RSI</div>
+                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:18px;color:{'#4ade80' if r['f3'] else '#374151'};">{'✓' if r['f3'] else '✗'}</div>
+                    </div>
+                    <div style="background:#060c18;border:1px solid {'#16a34a' if r['f4'] else '#1e3050'};border-radius:6px;padding:8px;text-align:center;">
+                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">VELA</div>
+                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:18px;color:{'#4ade80' if r['f4'] else '#374151'};">{'✓' if r['f4'] else '✗'}</div>
+                    </div>
+                  </div>
+
+                  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+                    <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
+                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">PRECIO</div>
+                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8d8e8;">{r['precio']:.5f}</div>
+                    </div>
+                    <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
+                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">RSI</div>
+                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:{'#f87171' if r['rsi']>70 else '#4ade80' if r['rsi']<30 else '#c8d8e8'};">{r['rsi']:.1f}</div>
+                    </div>
+                    <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
+                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">ENTRADA 1%</div>
+                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8920a;">${st.session_state.capital*0.01:.2f}</div>
+                    </div>
+                    <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
+                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">EXPIRACION</div>
+                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8d8e8;">1 min</div>
+                    </div>
+                  </div>
+
+                  {'<div style="background:#0a3020;border:1px solid #16a34a;border-radius:6px;padding:8px;margin-top:8px;font-family:Share Tech Mono,monospace;font-size:12px;color:#4ade80;">⚡ 4/4 FILTROS — Entrar en la PROXIMA vela. Expiracion 1 minuto.</div>' if completo else '<div style="background:#2a1a00;border:1px solid #c8920a;border-radius:6px;padding:8px;margin-top:8px;font-family:Share Tech Mono,monospace;font-size:12px;color:#fbbf24;">⚠ 3/4 filtros — Prepararse. Esperar que el 4to filtro confirme antes de entrar.</div>'}
+                </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div style="text-align:center;padding:60px 20px;background:#0d1525;border:2px dashed #1e3050;border-radius:12px;margin-top:10px;">
+          <div style="font-size:48px;margin-bottom:10px;">🔺</div>
+          <div style="font-family:Rajdhani,sans-serif;font-size:20px;color:#4a7a99;">Presiona ESCANEAR AHORA</div>
+          <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#2a3a55;margin-top:6px;">Detecta señales Triple Confirm en forex, materias primas, indices y crypto</div>
+        </div>""", unsafe_allow_html=True)
+
+    # ── SCRIPTS LUA PARA DESCARGAR ──────────────────────────────
+    st.markdown('<div class="sec" style="margin-top:24px;">📥 SCRIPTS LUA — DESCARGAR PARA IQ OPTION</div>', unsafe_allow_html=True)
+
+    script_hector1 = '''instrument {
+    name = "HECTOR 1 — Triple Confirm",
+    short_name = "H1_3C",
+    icon = "indicators:MA",
+    overlay = true
+}
+
+e5  = ema(close, 5)
+e13 = ema(close, 13)
+e50 = ema(close, 50)
+
+macd_linea  = ema(close, 5) - ema(close, 13)
+macd_signal = ema(macd_linea, 4)
+macd_hist   = macd_linea - macd_signal
+
+rsi_v = rsi(close, 14)
+
+f1_call = e5 > e13 and e13 > e50
+f1_put  = e5 < e13 and e13 < e50
+
+f2_call = macd_hist > 0 and macd_hist[1] <= 0
+f2_put  = macd_hist < 0 and macd_hist[1] >= 0
+
+f3_call = rsi_v > 45 and rsi_v < 75
+f3_put  = rsi_v > 25 and rsi_v < 55
+
+f4_call = close > open
+f4_put  = close < open
+
+call_signal = f1_call and f2_call and f3_call and f4_call
+put_signal  = f1_put  and f2_put  and f3_put  and f4_put
+
+warn_call = f1_call and f3_call and f4_call and not f2_call
+warn_put  = f1_put  and f3_put  and f4_put  and not f2_put
+
+plot(e5,  "EMA 5",  "yellow", 2)
+plot(e13, "EMA 13", "cyan",   2)
+plot(e50, "EMA 50", "gray",   1)
+
+plot_shape(call_signal, "CALL", shape_style.triangleup,
+    shape_size.large, "lime", shape_location.belowbar, 0, "CALL", "black")
+plot_shape(put_signal, "PUT", shape_style.triangledown,
+    shape_size.large, "red", shape_location.abovebar, 0, "PUT", "white")
+plot_shape(warn_call, "PREP+", shape_style.triangleup,
+    shape_size.small, "orange", shape_location.belowbar, 0, "!", "black")
+plot_shape(warn_put, "PREP-", shape_style.triangledown,
+    shape_size.small, "orange", shape_location.abovebar, 0, "!", "black")
+
+color_bar = "gray"
+if call_signal then color_bar = "lime" end
+if put_signal  then color_bar = "red"  end
+barcolor(color_bar)'''
+
+    script_hector2 = '''instrument {
+    name       = "HECTOR 2 — RSI + MACD",
+    short_name = "H2_RSI",
+    icon       = "indicators:RSI",
+    overlay    = false
+}
+
+rsi_v       = rsi(close, 14)
+macd_linea  = ema(close, 5) - ema(close, 13)
+macd_signal = ema(macd_linea, 4)
+macd_hist   = macd_linea - macd_signal
+
+rsi_color = "gray"
+if rsi_v > 50 and rsi_v < 70 then rsi_color = "lime"   end
+if rsi_v < 50 and rsi_v > 30 then rsi_color = "red"    end
+if rsi_v >= 70                then rsi_color = "orange" end
+if rsi_v <= 30                then rsi_color = "orange" end
+
+hist_color = "gray"
+if macd_hist > 0 then hist_color = "lime" end
+if macd_hist < 0 then hist_color = "red"  end
+
+plot(70,   "OB",  "red",    1, 0, style.levels, na_mode.continue)
+plot(30,   "OS",  "lime",   1, 0, style.levels, na_mode.continue)
+plot(50,   "MED", "gray",   1, 0, style.levels, na_mode.continue)
+plot(rsi_v,"RSI", rsi_color, 2)
+plot(macd_hist,   "Hist",   hist_color, 3, 0, style.histogram)
+plot(macd_linea,  "MACD",   "cyan",  1)
+plot(macd_signal, "Signal", "orange",1)
+plot(0,           "Zero",   "gray",  1, 0, style.levels, na_mode.continue)'''
+
+    h1_tab, h2_tab = st.tabs(["HECTOR 1 — Triple Confirm (overlay)", "HECTOR 2 — RSI + MACD (panel)"])
+
+    with h1_tab:
+        st.markdown("""<div class="script-card card-green">
+        <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:17px;color:#4ade80;margin-bottom:4px;">HECTOR 1 — Triple Confirm</div>
+        <div style="font-size:13px;color:#94a3b8;line-height:1.7;">
+        4 filtros: EMA Stack + MACD cruce + RSI zona + Vela confirmacion.<br>
+        <b style="color:#4ade80;">Flecha verde grande</b> = CALL — entrar proxima vela · <b style="color:#f87171;">Flecha roja grande</b> = PUT<br>
+        <b style="color:#ff9800;">Flecha naranja pequeña</b> = 3/4 filtros, prepararse
+        </div></div>""", unsafe_allow_html=True)
+        st.markdown(f'<div class="code-block">{script_hector1}</div>', unsafe_allow_html=True)
+        st.download_button("⬇ Descargar HECTOR 1.lua", script_hector1,
+            file_name="HECTOR_1_triple_confirm.lua", mime="text/plain", key="dl_h1")
+
+    with h2_tab:
+        st.markdown("""<div class="script-card card-blue">
+        <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:17px;color:#60a5fa;margin-bottom:4px;">HECTOR 2 — RSI + MACD</div>
+        <div style="font-size:13px;color:#94a3b8;line-height:1.7;">
+        Panel inferior de confirmacion. RSI coloreado por zona + histograma MACD.<br>
+        <b style="color:#4ade80;">RSI verde</b> = zona alcista · <b style="color:#f87171;">RSI rojo</b> = zona bajista · <b style="color:#ff9800;">RSI naranja</b> = extremo, precaucion
+        </div></div>""", unsafe_allow_html=True)
+        st.markdown(f'<div class="code-block">{script_hector2}</div>', unsafe_allow_html=True)
+        st.download_button("⬇ Descargar HECTOR 2.lua", script_hector2,
+            file_name="HECTOR_2_rsi_macd.lua", mime="text/plain", key="dl_h2")
+
+# ================================================================
 # TAB 5 — REGISTRO DE OPERACIONES
 # ================================================================
 with tab_ops:
@@ -1692,6 +2058,6 @@ end'''
 st.markdown(f"""
 <div style="text-align:center;margin-top:24px;padding:14px;border-top:1px solid #1e3050;">
   <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#2a3a55;letter-spacing:2px;">
-    QQE COMMAND V5 · HECTOR TRADING SYSTEM · Capital: ${st.session_state.capital:.2f} · Objetivo: $50/dia
+    QQE COMMAND V6 · HECTOR TRADING SYSTEM · Capital: ${st.session_state.capital:.2f} · Objetivo: $50/dia
   </div>
 </div>""", unsafe_allow_html=True)
