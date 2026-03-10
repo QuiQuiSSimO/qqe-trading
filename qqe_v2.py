@@ -57,7 +57,7 @@ except:
     COMPONENTS_OK = False
 
 st.set_page_config(
-    page_title="QQE Command v9 — Hector",
+    page_title="QQE Command v10 — Hector",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -68,109 +68,194 @@ st.set_page_config(
 # ================================================================
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&family=Inter:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700;900&family=Share+Tech+Mono&family=Exo+2:wght@300;400;700;900&display=swap');
 
-html, body, .stApp { background:#0a0f1a !important; }
-.stApp { font-family:'Inter',sans-serif; color:#c8d8e8; font-size:15px; }
-[data-testid="stSidebar"] { background:#0d1525 !important; border-right:1px solid #1e3050 !important; }
+/* ── BASE ── */
+html, body, .stApp { background:#050a14 !important; }
+.stApp { font-family:'Exo 2',sans-serif; color:#c8d8e8; font-size:15px; }
+[data-testid="stSidebar"] { background:#080e1c !important; border-right:1px solid #1a2a45 !important; }
 
-.stTabs [data-baseweb="tab-list"] { background:#0d1525; border-bottom:2px solid #1e3050; gap:0; }
+/* ── TABS ── */
+.stTabs [data-baseweb="tab-list"] {
+    background:linear-gradient(90deg,#050a14,#0a1020,#050a14);
+    border-bottom:2px solid #1a2a45; gap:0; flex-wrap:nowrap; overflow-x:auto;
+}
 .stTabs [data-baseweb="tab"] {
     background:transparent; color:#4a7a99 !important;
-    font-family:'Share Tech Mono',monospace; font-size:12px;
-    letter-spacing:1px; padding:12px 16px; border:none;
+    font-family:'Share Tech Mono',monospace; font-size:11px;
+    letter-spacing:1px; padding:13px 14px; border:none; white-space:nowrap;
+    transition: all 0.25s;
 }
 .stTabs [aria-selected="true"] {
-    background:#0a0f1a !important; color:#c8920a !important;
-    border-bottom:2px solid #c8920a !important; font-weight:700 !important;
+    background:linear-gradient(180deg,#0d1e3a,#050a14) !important;
+    color:#f0b429 !important;
+    border-bottom:3px solid #f0b429 !important; font-weight:700 !important;
+    text-shadow: 0 0 12px rgba(240,180,41,0.5);
 }
 
-.card { background:#0d1525; border:1px solid #1e3050; border-radius:10px; padding:18px; margin-bottom:10px; }
-.card-gold   { border-left:4px solid #c8920a; }
-.card-green  { border-left:4px solid #16a34a; }
-.card-red    { border-left:4px solid #dc2626; }
-.card-blue   { border-left:4px solid #2563eb; }
-.card-purple { border-left:4px solid #7c3aed; }
+/* ── CARDS ── */
+.card { background:#0a1020; border:1px solid #1a2a45; border-radius:12px; padding:18px; margin-bottom:10px; }
+.card-gold   { border-left:4px solid #f0b429; background:linear-gradient(135deg,#150e00,#0a1020); }
+.card-green  { border-left:4px solid #22c55e; background:linear-gradient(135deg,#001508,#0a1020); }
+.card-red    { border-left:4px solid #ef4444; background:linear-gradient(135deg,#150000,#0a1020); }
+.card-blue   { border-left:4px solid #3b82f6; background:linear-gradient(135deg,#000d20,#0a1020); }
+.card-purple { border-left:4px solid #a855f7; background:linear-gradient(135deg,#0d0020,#0a1020); }
 
-.kpi { background:#0d1525; border:1px solid #1e3050; border-radius:10px; padding:16px 18px; text-align:center; }
-.kpi-label { font-family:'Share Tech Mono',monospace; font-size:11px; color:#4a7a99; letter-spacing:2px; margin-bottom:6px; }
+/* ── KPIs ── */
+.kpi { background:linear-gradient(135deg,#0a1020,#0d1830); border:1px solid #1a2a45;
+       border-radius:12px; padding:16px 18px; text-align:center;
+       transition: transform 0.2s, border-color 0.2s; }
+.kpi:hover { transform:translateY(-2px); border-color:#f0b429; }
+.kpi-label { font-family:'Share Tech Mono',monospace; font-size:10px; color:#4a7a99; letter-spacing:2px; margin-bottom:6px; }
 .kpi-value { font-family:'Rajdhani',sans-serif; font-size:36px; font-weight:700; line-height:1.1; }
 .kpi-sub   { font-family:'Share Tech Mono',monospace; font-size:11px; color:#4a7a99; margin-top:3px; }
 
-.sec { font-family:'Share Tech Mono',monospace; font-size:12px; color:#4a7a99; letter-spacing:3px;
-       text-transform:uppercase; border-bottom:2px solid #1e3050; padding-bottom:6px; margin:16px 0 12px; }
+/* ── SECCIÓN HEADER ── */
+.sec { font-family:'Share Tech Mono',monospace; font-size:11px; color:#f0b429; letter-spacing:4px;
+       text-transform:uppercase; border-bottom:1px solid #1a2a45; padding-bottom:8px; margin:18px 0 14px;
+       display:flex; align-items:center; gap:8px; }
+.sec::before { content:''; display:inline-block; width:3px; height:14px;
+               background:linear-gradient(#f0b429,#c8920a); border-radius:2px; }
 
-.signal-call { background:linear-gradient(135deg,#0a2010,#0d3520); border:1px solid #16a34a;
-               border-radius:10px; padding:16px; margin-bottom:10px; }
-.signal-put  { background:linear-gradient(135deg,#200a0a,#350d0d); border:1px solid #dc2626;
-               border-radius:10px; padding:16px; margin-bottom:10px; }
-.signal-wait { background:#0d1525; border:1px solid #1e3050; border-radius:10px; padding:16px; margin-bottom:10px; }
+/* ── SIGNALS ── */
+.signal-call {
+    background:linear-gradient(135deg,#001a08,#002010,#001508);
+    border:1px solid #22c55e; border-radius:12px; padding:18px; margin-bottom:12px;
+    box-shadow: 0 0 20px rgba(34,197,94,0.15), inset 0 1px 0 rgba(34,197,94,0.1);
+    animation: glow-call 3s ease-in-out infinite;
+}
+.signal-put {
+    background:linear-gradient(135deg,#1a0000,#200000,#150000);
+    border:1px solid #ef4444; border-radius:12px; padding:18px; margin-bottom:12px;
+    box-shadow: 0 0 20px rgba(239,68,68,0.15), inset 0 1px 0 rgba(239,68,68,0.1);
+    animation: glow-put 3s ease-in-out infinite;
+}
+.signal-wait { background:#0a1020; border:1px solid #1a2a45; border-radius:12px; padding:16px; margin-bottom:10px; }
 
+@keyframes glow-call {
+    0%,100% { box-shadow: 0 0 15px rgba(34,197,94,0.1); }
+    50%      { box-shadow: 0 0 35px rgba(34,197,94,0.35), 0 0 60px rgba(34,197,94,0.1); }
+}
+@keyframes glow-put {
+    0%,100% { box-shadow: 0 0 15px rgba(239,68,68,0.1); }
+    50%      { box-shadow: 0 0 35px rgba(239,68,68,0.35), 0 0 60px rgba(239,68,68,0.1); }
+}
+
+/* ── ENTRADA RÁPIDA BUTTON ── */
+.btn-entrada {
+    display:inline-block; background:linear-gradient(135deg,#22c55e,#16a34a);
+    color:#000 !important; font-family:'Rajdhani',sans-serif; font-weight:900;
+    font-size:15px; letter-spacing:2px; padding:12px 24px; border-radius:10px;
+    border:none; cursor:pointer; width:100%; text-align:center;
+    box-shadow: 0 4px 20px rgba(34,197,94,0.4);
+    animation: pulse-btn 2s infinite;
+}
+.btn-entrada-put {
+    background:linear-gradient(135deg,#ef4444,#dc2626) !important;
+    box-shadow: 0 4px 20px rgba(239,68,68,0.4) !important;
+}
+@keyframes pulse-btn {
+    0%,100% { transform:scale(1); }
+    50%      { transform:scale(1.02); }
+}
+
+/* ── PANEL SESIÓN STICKY ── */
+.sesion-bar {
+    position:sticky; top:0; z-index:999;
+    background:rgba(5,10,20,0.95); backdrop-filter:blur(12px);
+    border-bottom:1px solid #1a2a45; padding:8px 16px;
+    display:flex; align-items:center; justify-content:space-between;
+    flex-wrap:wrap; gap:8px; margin-bottom:16px;
+    border-radius:0 0 10px 10px;
+}
+
+/* ── BADGES ── */
 .badge { padding:4px 12px; border-radius:20px; font-family:'Share Tech Mono',monospace; font-size:11px; font-weight:700; }
-.badge-green  { background:#0a3020; color:#4ade80; border:1px solid #16a34a; }
-.badge-red    { background:#3a0a0a; color:#f87171; border:1px solid #dc2626; }
-.badge-gold   { background:#2a1a00; color:#fbbf24; border:1px solid #c8920a; }
-.badge-blue   { background:#0a1a3a; color:#60a5fa; border:1px solid #2563eb; }
+.badge-green  { background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid #22c55e; }
+.badge-red    { background:rgba(239,68,68,0.15); color:#f87171; border:1px solid #ef4444; }
+.badge-gold   { background:rgba(240,180,41,0.15); color:#fbbf24; border:1px solid #f0b429; }
+.badge-blue   { background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid #3b82f6; }
+.badge-purple { background:rgba(168,85,247,0.15); color:#c084fc; border:1px solid #a855f7; }
 .badge-gray   { background:#1a2535; color:#94a3b8; border:1px solid #2a3a55; }
 
-.ia-box { background:#0d1525; border:1px solid #c8920a; border-radius:10px; padding:18px;
+/* ── MISCELÁNEOS ── */
+.ia-box { background:#0a1020; border:1px solid #f0b429; border-radius:12px; padding:18px;
           font-size:15px; line-height:1.9; color:#c8d8e8; }
-
-.asset-row { background:#0d1525; border:1px solid #1e3050; border-radius:8px; padding:14px; margin-bottom:8px; }
-
-.scan-dot { display:inline-block; width:8px; height:8px; border-radius:50%; animation:pulse 2s infinite; }
-@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.4;} }
-
-.prog-track { height:7px; background:#1e3050; border-radius:3px; overflow:hidden; margin:4px 0; }
-.prog-fill  { height:100%; border-radius:3px; }
-
-.diario-entry { background:#0d1525; border:1px solid #1e3050; border-radius:8px; padding:16px; margin-bottom:8px; }
+.asset-row { background:#0a1020; border:1px solid #1a2a45; border-radius:10px; padding:14px; margin-bottom:8px;
+             transition: border-color 0.2s; }
+.asset-row:hover { border-color:#f0b429; }
+.scan-dot { display:inline-block; width:9px; height:9px; border-radius:50%; animation:blink 1.5s infinite; }
+@keyframes blink { 0%,100%{opacity:1; transform:scale(1);} 50%{opacity:.3; transform:scale(0.7);} }
+.prog-track { height:8px; background:#1a2a45; border-radius:4px; overflow:hidden; margin:4px 0; }
+.prog-fill  { height:100%; border-radius:4px; transition: width 0.8s ease; }
+.diario-entry { background:#0a1020; border:1px solid #1a2a45; border-radius:10px; padding:16px; margin-bottom:8px; }
 .diario-meta  { font-family:'Share Tech Mono',monospace; font-size:11px; color:#4a7a99; letter-spacing:1px; margin-bottom:6px; }
-
-.script-card { background:#0d1525; border:1px solid #1e3050; border-radius:8px; padding:18px; margin-bottom:12px; }
-.code-block { background:#060c18; border:1px solid #1e3050; border-radius:6px; padding:16px;
+.script-card { background:#0a1020; border:1px solid #1a2a45; border-radius:10px; padding:18px; margin-bottom:12px; }
+.code-block { background:#030710; border:1px solid #1a2a45; border-radius:8px; padding:16px;
               font-family:'Share Tech Mono',monospace; font-size:11px; line-height:1.9; color:#7dd3fc;
               white-space:pre; overflow-x:auto; max-height:300px; overflow-y:auto; margin-bottom:10px; }
+.strat-box { background:#0a1020; border:1px solid #f0b429; border-radius:14px; padding:18px; margin-bottom:12px; }
+.strat-step { background:#030710; border-left:3px solid #f0b429; padding:12px 16px; margin-bottom:8px;
+              border-radius:0 10px 10px 0; font-size:14px; line-height:1.8; }
+.strat-regla { background:rgba(34,197,94,0.05); border:1px solid #22c55e; border-radius:10px;
+               padding:12px 16px; margin-bottom:8px; font-size:14px; }
 
-/* ESTRATEGIA NUEVA */
-.strat-box { background:#0d1525; border:1px solid #c8920a; border-radius:12px; padding:18px; margin-bottom:12px; }
-.strat-step { background:#060c18; border-left:3px solid #c8920a; padding:12px 16px; margin-bottom:8px; border-radius:0 8px 8px 0; font-size:14px; line-height:1.8; }
-.strat-regla { background:#0a3020; border:1px solid #16a34a; border-radius:8px; padding:12px 16px; margin-bottom:8px; font-size:14px; }
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width:4px; height:4px; }
+::-webkit-scrollbar-track { background:#050a14; }
+::-webkit-scrollbar-thumb { background:linear-gradient(#f0b429,#c8920a); border-radius:2px; }
 
-/* Mobile */
-@media (max-width:768px) {
-    .stTabs [data-baseweb="tab"] { font-size:11px; padding:10px 10px; letter-spacing:0; }
-    .stButton>button { min-height:52px !important; font-size:13px !important; }
-    .kpi-value { font-size:28px; }
-}
-
+/* ── BOTONES STREAMLIT ── */
 .stButton>button {
-    background:#1e3050 !important; color:#c8d8e8 !important;
-    border:1px solid #2a4570 !important; border-radius:8px !important;
-    font-family:'Share Tech Mono',monospace !important; font-size:12px !important; letter-spacing:1px !important;
-    transition:all .2s;
+    background:linear-gradient(135deg,#0d1830,#1a2a45) !important;
+    color:#c8d8e8 !important; border:1px solid #2a4060 !important;
+    border-radius:10px !important; font-family:'Share Tech Mono',monospace !important;
+    font-size:12px !important; letter-spacing:1px !important;
+    transition:all .25s; min-height:44px !important;
 }
-.stButton>button:hover { background:#c8920a !important; color:#000 !important; border-color:#c8920a !important; }
+.stButton>button:hover {
+    background:linear-gradient(135deg,#f0b429,#c8920a) !important;
+    color:#000 !important; border-color:#f0b429 !important;
+    box-shadow: 0 4px 16px rgba(240,180,41,0.4) !important;
+    transform: translateY(-1px);
+}
+.stButton>button:active { transform: translateY(0); }
 
+/* ── INPUTS ── */
 .stTextInput>div>div>input, .stTextArea>div>div>textarea {
-    background:#0d1525 !important; border:1px solid #1e3050 !important;
-    color:#c8d8e8 !important; border-radius:8px !important;
-    font-size:14px !important;
+    background:#0a1020 !important; border:1px solid #1a2a45 !important;
+    color:#c8d8e8 !important; border-radius:10px !important; font-size:14px !important;
 }
 .stSelectbox>div>div, .stNumberInput>div>div>input {
-    background:#0d1525 !important; border:1px solid #1e3050 !important; color:#c8d8e8 !important; border-radius:8px !important;
-    font-size:14px !important;
+    background:#0a1020 !important; border:1px solid #1a2a45 !important;
+    color:#c8d8e8 !important; border-radius:10px !important; font-size:14px !important;
 }
-[data-testid="stSlider"] { color:#c8920a; }
-::-webkit-scrollbar { width:5px; height:5px; }
-::-webkit-scrollbar-track { background:#0a0f1a; }
-::-webkit-scrollbar-thumb { background:#1e3050; border-radius:2px; }
+[data-testid="stSlider"] .stSlider { accent-color:#f0b429; }
 
-/* Bigger labels globally */
-label, .stSelectbox label, .stTextInput label, .stNumberInput label {
-    font-size:13px !important; color:#7a9ab8 !important;
+/* ── MOBILE / iPHONE ── */
+@media (max-width:768px) {
+    .stApp { font-size:14px !important; }
+    .stTabs [data-baseweb="tab"] { font-size:10px !important; padding:10px 8px !important; letter-spacing:0 !important; }
+    .stTabs [data-baseweb="tab-list"] { overflow-x:auto !important; -webkit-overflow-scrolling:touch; }
+    .stButton>button { min-height:52px !important; font-size:14px !important; border-radius:12px !important; }
+    .kpi-value { font-size:26px !important; }
+    .kpi { padding:12px !important; }
+    .signal-call, .signal-put { padding:14px !important; }
+    h1,h2,h3 { font-size:1.1em !important; }
+    /* Hacer grids de 1 columna en mobile */
+    [style*="grid-template-columns: repeat(4"] { grid-template-columns: 1fr 1fr !important; }
+    [style*="grid-template-columns: repeat(5"] { grid-template-columns: 1fr 1fr !important; }
+    [style*="grid-template-columns:1fr 1fr 1fr 1fr"] { grid-template-columns: 1fr 1fr !important; }
 }
-p, li, div { font-size:inherit; }
+@media (max-width:480px) {
+    .stTabs [data-baseweb="tab"] { font-size:9px !important; padding:9px 6px !important; }
+    .btn-entrada { font-size:16px !important; padding:16px !important; min-height:56px; }
+}
+
+/* ── LABELS ── */
+label, .stSelectbox label, .stTextInput label, .stNumberInput label {
+    font-size:12px !important; color:#7a9ab8 !important; letter-spacing:1px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -493,7 +578,7 @@ def analizar_activo_swing(symbol, tf="H1"):
 # SIDEBAR
 # ================================================================
 with st.sidebar:
-    st.markdown('<div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:22px;color:#c8920a;letter-spacing:2px;margin-bottom:16px;">QQE CMD v9</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:22px;color:#c8920a;letter-spacing:2px;margin-bottom:16px;">QQE CMD v10</div>', unsafe_allow_html=True)
 
     # API
     st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#4a7a99;letter-spacing:2px;margin-bottom:4px;">CLAVE API ANTHROPIC</div>', unsafe_allow_html=True)
@@ -583,43 +668,166 @@ with st.sidebar:
     st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#2a3a55;text-align:center;">Credenciales guardadas automáticamente</div>', unsafe_allow_html=True)
 
 # ================================================================
-# HEADER
+# HEADER v10
 # ================================================================
 ses_nom, ses_est, ses_col, ses_bg, ses_border = get_session_info()
-hora_utc = datetime.now(TZ_ARG).strftime("%H:%M ARG")
+hora_arg_now = datetime.now(TZ_ARG).strftime("%H:%M")
 _, cp, np_ = calc_pnl()
+racha_actual = st.session_state.get("racha_losses", 0)
+capital_hoy  = st.session_state.capital
+
+if ses_est == "OPERAR":
+    sem_color = "#22c55e"; sem_bg = "rgba(34,197,94,0.12)"; sem_icon = "🟢"
+elif ses_est in ("ACTIVO","PRECAUCION"):
+    sem_color = "#f0b429"; sem_bg = "rgba(240,180,41,0.12)"; sem_icon = "🟡"
+else:
+    sem_color = "#64748b"; sem_bg = "rgba(100,116,139,0.12)"; sem_icon = "🔴"
+
+pnl_col  = "#22c55e" if np_ >= 0 else "#ef4444"
+racha_col = "#22c55e" if racha_actual == 0 else ("#f0b429" if racha_actual == 1 else "#ef4444")
+if "audio_on" not in st.session_state:
+    st.session_state.audio_on = True
 
 st.markdown(f"""
-<div style="display:flex;justify-content:space-between;align-items:center;
-background:#0d1525;border:1px solid #1e3050;border-radius:12px;padding:14px 20px;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+<div style="background:linear-gradient(135deg,#080e1c,#0d1830);border:1px solid #1a2a45;border-radius:14px;
+     padding:12px 18px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;
+     flex-wrap:wrap;gap:10px;box-shadow:0 4px 30px rgba(0,0,0,0.5);">
   <div>
-    <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:26px;color:#c8920a;letter-spacing:2px;">QQE COMMAND V4</div>
-    <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;">BINARIAS 1MIN · SWING H1/H4 · SCANNER EN VIVO</div>
-  </div>
-  <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
-    <div style="background:{ses_bg};border:1px solid {ses_border};border-radius:8px;padding:8px 14px;text-align:center;">
-      <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:{ses_col};">{ses_est}</div>
-      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;color:{ses_col};">{ses_nom}</div>
+    <div style="font-family:'Exo 2',sans-serif;font-weight:900;font-size:22px;letter-spacing:3px;
+         background:linear-gradient(90deg,#f0b429,#ff8c00,#f0b429);background-size:200%;
+         -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">
+      QQE COMMAND v10
     </div>
-    <div style="text-align:right;">
-      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">{hora_utc}</div>
-      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:18px;color:{'#4ade80' if np_>=0 else '#f87171'};">${np_:.2f}</div>
+    <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;">
+      HECTOR · GOYA, CTES · TRIPLE CONFIRM SYSTEM
     </div>
   </div>
-</div>""", unsafe_allow_html=True)
+  <div style="background:{sem_bg};border:1px solid {sem_color};border-radius:10px;padding:8px 14px;text-align:center;min-width:120px;">
+    <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:{sem_color};letter-spacing:2px;">{sem_icon} SESION</div>
+    <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:14px;color:{sem_color};">{ses_nom}</div>
+    <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:{sem_color};opacity:0.8;">{ses_est}</div>
+  </div>
+  <div style="text-align:center;">
+    <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;">🕐 ARG</div>
+    <div id="reloj-arg" style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:28px;color:#c8d8e8;line-height:1;">{hora_arg_now}</div>
+  </div>
+  <div style="text-align:center;">
+    <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;">P&L HOY</div>
+    <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:28px;color:{pnl_col};">${{np_:+.2f}}</div>
+  </div>
+  <div style="text-align:center;">
+    <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;">RACHA</div>
+    <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:26px;color:{racha_col};">{"✓ 0" if racha_actual==0 else f"⚠ {racha_actual}" if racha_actual==1 else f"🛑 {racha_actual}"}</div>
+  </div>
+  <div style="text-align:center;">
+    <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;">ENTRADA 1%</div>
+    <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:24px;color:#f0b429;">${{capital_hoy*0.01:.2f}}</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<script>
+(function() {
+  function updateClock() {
+    var el = document.getElementById('reloj-arg');
+    if (!el) return;
+    var now = new Date();
+    var utcMs = now.getTime() + (now.getTimezoneOffset()*60000);
+    var argMs = utcMs - (3*3600000);
+    var argDate = new Date(argMs);
+    var h = argDate.getHours().toString().padStart(2,'0');
+    var m = argDate.getMinutes().toString().padStart(2,'0');
+    var s = argDate.getSeconds().toString().padStart(2,'0');
+    el.textContent = h + ':' + m + ':' + s;
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+})();
+</script>
+""", unsafe_allow_html=True)
+
+# Botón silenciar y test sonido
+_c1, _c2, _c3 = st.columns([1,1,8])
+with _c1:
+    if st.button("🔔 ON" if st.session_state.audio_on else "🔕 OFF", key="btn_snd_toggle"):
+        st.session_state.audio_on = not st.session_state.audio_on
+        st.rerun()
+with _c2:
+    if st.button("🔊 Test", key="btn_snd_test"):
+        st.session_state["_play_sound"] = "signal"
+
+SONIDOS_JS = """<script>
+var _qqe_on = {audio_on};
+var _tipo   = "{sound_type}";
+function qqePlay(t) {{
+  if (!_qqe_on) return;
+  try {{
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    var osc = ctx.createOscillator();
+    var g   = ctx.createGain();
+    osc.connect(g); g.connect(ctx.destination);
+    var now = ctx.currentTime;
+    if (t==='signal_call') {{
+      osc.type='sine';
+      osc.frequency.setValueAtTime(440,now); osc.frequency.setValueAtTime(554,now+0.14); osc.frequency.setValueAtTime(659,now+0.28);
+      g.gain.setValueAtTime(0.4,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.55);
+      osc.start(now); osc.stop(now+0.55);
+    }} else if (t==='signal_put') {{
+      osc.type='sine';
+      osc.frequency.setValueAtTime(659,now); osc.frequency.setValueAtTime(554,now+0.14); osc.frequency.setValueAtTime(440,now+0.28);
+      g.gain.setValueAtTime(0.4,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.55);
+      osc.start(now); osc.stop(now+0.55);
+    }} else if (t==='loss_warning') {{
+      osc.type='square';
+      osc.frequency.setValueAtTime(200,now); osc.frequency.setValueAtTime(150,now+0.2); osc.frequency.setValueAtTime(200,now+0.4);
+      g.gain.setValueAtTime(0.3,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.65);
+      osc.start(now); osc.stop(now+0.65);
+    }} else if (t==='session_open') {{
+      osc.type='triangle';
+      osc.frequency.setValueAtTime(523,now); osc.frequency.setValueAtTime(659,now+0.12); osc.frequency.setValueAtTime(784,now+0.24); osc.frequency.setValueAtTime(1047,now+0.36);
+      g.gain.setValueAtTime(0.35,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.6);
+      osc.start(now); osc.stop(now+0.6);
+    }} else if (t==='stop_hit') {{
+      osc.type='sawtooth';
+      for(var i=0;i<4;i++) {{ osc.frequency.setValueAtTime(300,now+i*0.25); osc.frequency.setValueAtTime(150,now+i*0.25+0.12); }}
+      g.gain.setValueAtTime(0.4,now); g.gain.exponentialRampToValueAtTime(0.001,now+1.1);
+      osc.start(now); osc.stop(now+1.1);
+    }} else {{
+      osc.type='sine'; osc.frequency.setValueAtTime(880,now);
+      g.gain.setValueAtTime(0.3,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.3);
+      osc.start(now); osc.stop(now+0.3);
+    }}
+  }} catch(e) {{ console.log('audio err:',e); }}
+}}
+if (_tipo && _tipo!=='none') {{ setTimeout(function(){{qqePlay(_tipo);}},150); }}
+</script>"""
+
+_snd = st.session_state.pop("_play_sound", "none")
+if racha_actual >= 2 and st.session_state.get("_racha_alerted",0) != racha_actual:
+    _snd = "stop_hit"; st.session_state["_racha_alerted"] = racha_actual
+_h_utc = get_utc_hour(); _min_utc = datetime.now(timezone.utc).minute
+if _h_utc in (7,13) and _min_utc == 0:
+    _ses_key = f"_ses_alerted_{_h_utc}"
+    if not st.session_state.get(_ses_key,False):
+        _snd = "session_open"; st.session_state[_ses_key] = True
+
+st.markdown(SONIDOS_JS.format(audio_on="true" if st.session_state.audio_on else "false", sound_type=_snd), unsafe_allow_html=True)
+
+
 
 # ================================================================
 # TABS
 # ================================================================
 
 # ================================================================
-# TABS — v8
+# TABS — v10
 # ================================================================
-tab_scan1, tab_swing, tab_triple, tab_noticias, tab_ops, tab_diario, tab_binarias, tab_copy, tab_codigos = st.tabs([
-    "⚡ SCANNER 1MIN", "📈 SWING + IA",
-    "🎯 TRIPLE EN VIVO",
-    "📰 NOTICIAS",
-    "📋 REGISTRO", "📓 DIARIO", "🤖 SCRIPTS LUA", "👥 COPY", "💻 CODIGOS QQE"
+tab_triple, tab_noticias, tab_swing, tab_ops, tab_diario, tab_binarias, tab_copy, tab_codigos, tab_scan1 = st.tabs([
+    "🎯 TRIPLE EN VIVO", "📰 NOTICIAS+IA",
+    "📈 SWING+IA", "📋 REGISTRO", "📓 DIARIO",
+    "🤖 SCRIPTS LUA", "👥 COPY", "💻 CODIGOS QQE",
+    "⚡ SCANNER"
 ])
 
 # TAB 1 — SCANNER BINARIAS 1 MINUTO
@@ -866,7 +1074,7 @@ with tab_swing:
                                f"📊 RSI: {r['rsi']:.1f}\n"
                                f"⏱ Temporalidad: {tf_sel}\n"
                                f"💵 Capital 2%: <b>${st.session_state.capital*0.02:.2f}</b>\n"
-                               f"<i>QQE Command v9 · {sesion_activa}</i>")
+                               f"<i>QQE Command v10 · {sesion_activa}</i>")
                         ok = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, msg)
                         if ok:
                             enviadas.add(key_sw)
@@ -1009,7 +1217,7 @@ with tab_swing:
         iqopt_name = ACTIVOS[activo_ia]["iqopt"]
         st.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#c8920a;margin:4px 0;">📋 Nombre en IQ Option: <b>{iqopt_name}</b></div>', unsafe_allow_html=True)
 
-        st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;margin:8px 0 4px;">CAPTURA DEL GRAFICO (hasta 3 imagenes)</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;margin:8px 0 4px;">CAPTURA DEL GRAFICO (hasta 3) · 📱 iPhone: capturá → Archivos → subí</div>', unsafe_allow_html=True)
         imgs = st.file_uploader("", type=["png","jpg","jpeg","webp"], accept_multiple_files=True, key="ia_imgs", label_visibility="collapsed")
 
         if imgs:
@@ -1101,7 +1309,7 @@ Si el grafico es poco claro, decilo sin dudar."""
               </div>
               <div style="font-size:14px;color:#c8d8e8;line-height:2.1;">{texto.replace(chr(10),"<br>")}</div>
               <div style="margin-top:12px;padding-top:10px;border-top:1px solid {rbr};font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">
-                Capital: ${st.session_state.capital:.2f} · Entrada 2%: ${st.session_state.capital*0.02:.2f} · QQE Command v9
+                Capital: ${st.session_state.capital:.2f} · Entrada 2%: ${st.session_state.capital*0.02:.2f} · QQE Command v10
               </div>
             </div>""", unsafe_allow_html=True)
 
@@ -1125,7 +1333,7 @@ Si el grafico es poco claro, decilo sin dudar."""
                                   f"━━━━━━━━━━━━━━\n"
                                   f"⏱ {res_ia['tf']} · {res_ia['hora']}\n\n"
                                   + texto[:800] +
-                                  f"\n\n<i>QQE Command v9</i>")
+                                  f"\n\n<i>QQE Command v10</i>")
                         ok = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, msg_tg)
                         if ok: st.success("Enviado a Telegram!")
                         else: st.error("Error enviando a Telegram")
@@ -1342,11 +1550,19 @@ with tab_triple:
                                f"📊 RSI: {r['rsi']:.1f} · Confianza: {r['conf']}%\n"
                                f"💵 Entrada 1%: <b>${st.session_state.capital*0.01:.2f}</b>\n"
                                f"⏱ Exp: 1 min · 🕐 {r['hora']} · {ses_nom}\n"
-                               f"<i>QQE Command v9</i>")
+                               f"<i>QQE Command v10</i>")
                         ok = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, msg)
                         if ok:
                             enviadas.add(key_tg)
                             st.session_state.tg_enviadas = enviadas
+
+        # ── Sonido según señales encontradas ─────────────────────
+        completos_snd = [r for r in resultados_t if r["filtros"] >= 4]
+        if completos_snd:
+            # Determinar dirección dominante para el sonido
+            n_call = sum(1 for r in completos_snd if r["direccion"]=="CALL")
+            n_put  = sum(1 for r in completos_snd if r["direccion"]=="PUT")
+            st.session_state["_play_sound"] = "signal_call" if n_call >= n_put else "signal_put"
         st.rerun()
 
     # ── RESULTADOS ──────────────────────────────────────────────
@@ -1436,6 +1652,54 @@ with tab_triple:
                   </div>
                   {'<div style="background:#0a3020;border:1px solid #16a34a;border-radius:6px;padding:8px;margin-top:8px;font-family:Share Tech Mono,monospace;font-size:12px;color:#4ade80;">⚡ SEÑAL COMPLETA + H1 ALINEADO — Máxima calidad. Entrar en próxima vela.</div>' if alineado and not contra else '<div style="background:#2a1a00;border:1px solid #ff9800;border-radius:6px;padding:8px;margin-top:8px;font-family:Share Tech Mono,monospace;font-size:12px;color:#fbbf24;">⚠ Señal técnica OK pero va contra tendencia H1. Reducir monto a 0.5% o esperar.</div>' if contra else '<div style="background:#0a2030;border:1px solid #60a5fa;border-radius:6px;padding:8px;margin-top:8px;font-family:Share Tech Mono,monospace;font-size:12px;color:#60a5fa;">📊 Señal completa. H1 lateral — válido, pero preferir activos con H1 alineado.</div>'}
                 </div>""", unsafe_allow_html=True)
+
+                # ── BOTÓN ENTRADA RÁPIDA ─────────────────────────────
+                _btn_col = "#22c55e" if es_call else "#ef4444"
+                _btn_dir = r["direccion"]
+                _btn_act = r["activo"]
+                _monto_ent = round(st.session_state.capital * 0.01, 2)
+                _btn_key   = f"entrada_rapida_{r['activo']}_{r.get('hora','')}"
+
+                st.markdown(f"""
+                <div style="margin-top:12px;">
+                  <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#4a7a99;
+                       letter-spacing:2px;margin-bottom:6px;text-align:center;">
+                    REGISTRAR ENTRADA · MONTO 1% = ${_monto_ent}
+                  </div>
+                </div>""", unsafe_allow_html=True)
+
+                _c_btn1, _c_btn2 = st.columns([3,1])
+                with _c_btn1:
+                    if st.button(
+                        f"{'🔺 CALL' if es_call else '🔻 PUT'} — ENTRAR {_btn_act} ${_monto_ent}",
+                        key=_btn_key,
+                        use_container_width=True
+                    ):
+                        # Registrar operación automáticamente
+                        st.session_state.ops.append({
+                            "fecha": get_fecha_arg().strftime("%d/%m"),
+                            "hora":  datetime.now(TZ_ARG).strftime("%H:%M"),
+                            "activo": _btn_act,
+                            "dir":    _btn_dir,
+                            "tipo":   "TRIPLE 1MIN",
+                            "monto":  _monto_ent,
+                            "resultado": "—",   # pendiente — se actualiza después
+                            "pnl":    0.0,
+                        })
+                        # Sonido entrada
+                        st.session_state["_play_sound"] = "signal_call" if es_call else "signal_put"
+                        st.success(f"✅ Operación registrada — {_btn_dir} {_btn_act} ${_monto_ent} · Completar resultado en REGISTRO")
+                with _c_btn2:
+                    if st.button("WIN ✅", key=f"win_{_btn_key}"):
+                        # Buscar última op sin resultado y marcarla WIN
+                        for _op in reversed(st.session_state.ops):
+                            if _op["activo"] == _btn_act and _op["resultado"] == "—":
+                                _op["resultado"] = "WIN"
+                                _op["pnl"]       = _monto_ent * 0.85  # pago IQ Option ~85%
+                                st.session_state.racha_losses = 0
+                                st.session_state["_play_sound"] = "signal_call"
+                                break
+                        st.rerun()
 
         # SEÑALES 3/4 — más pequeñas
         if avisos_t:
@@ -1557,6 +1821,33 @@ with tab_noticias:
         noticias_idioma = st.selectbox("Idioma análisis IA", ["Español", "English"], key="not_idioma")
 
     # ── BOTÓN ANALIZAR ──────────────────────────────────────────
+    # ── IMAGEN DESDE PORTAPAPELES ──────────────────────────────
+    with st.expander("📸 Pegar imagen del gráfico (portapapeles / captura)", expanded=False):
+        st.markdown("""
+        <div style="background:rgba(168,85,247,0.08);border:1px solid #a855f7;border-radius:10px;
+             padding:12px 16px;margin-bottom:10px;font-family:'Share Tech Mono',monospace;font-size:11px;color:#c084fc;">
+          📱 <b>iPhone/Android:</b> Capturá el gráfico → guardá → cargá desde Archivos<br>
+          💻 <b>Desktop:</b> Capturá con Win+Shift+S → guardá → subí acá
+        </div>
+        """, unsafe_allow_html=True)
+        img_uploaded = st.file_uploader(
+            "Subir imagen del gráfico para análisis IA",
+            type=["png","jpg","jpeg","webp"],
+            key="img_grafico_noticias",
+            label_visibility="collapsed"
+        )
+        if img_uploaded:
+            import base64 as b64mod
+            st.image(img_uploaded, caption="Gráfico cargado — la IA lo analizará junto con las noticias", use_column_width=True)
+            st.session_state["img_grafico_b64"] = b64mod.b64encode(img_uploaded.read()).decode()
+            st.session_state["img_grafico_type"] = img_uploaded.type
+            st.success("✅ Imagen lista — hacé clic en ANALIZAR CON IA")
+        elif st.session_state.get("img_grafico_b64"):
+            st.info("📊 Imagen del scan anterior cargada. Subí una nueva o continuá.")
+            if st.button("🗑 Borrar imagen", key="del_img_not"):
+                st.session_state.pop("img_grafico_b64", None)
+                st.rerun()
+
     not_btn = st.button("🤖 ANALIZAR CON IA", key="noticias_btn", use_container_width=True)
 
     # ── CALENDARIO ECONÓMICO ESTÁTICO ──────────────────────────
@@ -1662,7 +1953,19 @@ Be specific and realistic. Base analysis on what typically moves {noticias_activ
                         json={
                             "model": "claude-sonnet-4-20250514",
                             "max_tokens": 1500,
-                            "messages": [{"role": "user", "content": prompt_noticias}]
+                            "messages": [{
+                                "role": "user",
+                                "content": (
+                                    [
+                                        {"type": "image", "source": {
+                                            "type": "base64",
+                                            "media_type": st.session_state.get("img_grafico_type","image/png"),
+                                            "data": st.session_state["img_grafico_b64"]
+                                        }},
+                                        {"type": "text", "text": prompt_noticias + "\n\nAdemás analiza el gráfico adjunto e incorpora lo que ves (tendencia, niveles clave, patrones) en tu análisis."}
+                                    ] if st.session_state.get("img_grafico_b64") else prompt_noticias
+                                )
+                            }]
                         },
                         timeout=30
                     )
@@ -1786,7 +2089,7 @@ Be specific and realistic. Base analysis on what typically moves {noticias_activ
                            f"🔺 Prob. suba: {prob_suba}% | 🔻 Prob. baja: {prob_baja}%\n"
                            f"⚠ Riesgo: {an.get('riesgo','')}\n\n"
                            f"📝 {an.get('resumen','')}\n\n"
-                           f"<i>QQE Command v9 — Noticias IA</i>")
+                           f"<i>QQE Command v10 — Noticias IA</i>")
                 ok_not = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, msg_not)
                 if ok_not:
                     st.success("✅ Enviado a Telegram")
@@ -1871,7 +2174,7 @@ with tab_ops:
                             f"🛑 <b>STOP — 2 PÉRDIDAS CONSECUTIVAS</b>\n"
                             f"Regla HECTOR: detener operaciones por hoy.\n"
                             f"Pérdida del día: ${st.session_state.perdida_dia:.2f}\n"
-                            f"<i>QQE Command v9</i>")
+                            f"<i>QQE Command v10</i>")
             else:
                 # WIN resetea racha
                 st.session_state.racha_losses = 0
@@ -1965,7 +2268,7 @@ with tab_diario:
                     for e in reversed(ultimas):
                         msg_tg += f"\n🕐 {e.get('hora','?')} | {e.get('tipo','?')} | {e.get('activo','?')}\n"
                         msg_tg += e.get('texto','')[:200] + ("..." if len(e.get('texto','')) > 200 else "") + "\n"
-                    msg_tg += f"\n<i>QQE Command v9 — Goya, Corrientes</i>"
+                    msg_tg += f"\n<i>QQE Command v10 — Goya, Corrientes</i>"
                     ok = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, msg_tg[:4000])
                     if ok: st.success("Bitacora enviada a Telegram!")
                     else:  st.error("Error — verificar token y chat ID en sidebar")
