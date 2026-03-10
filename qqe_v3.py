@@ -55,7 +55,7 @@ except:
     COMPONENTS_OK = False
 
 st.set_page_config(
-    page_title="QQE Command v7 — Hector",
+    page_title="QQE Command v6 — Hector",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -219,7 +219,6 @@ defaults = {
     "autorefresh_on": False,
     "hector_results": None,
     "hector_ultimo": "",
-    "not_resultado": None,
     "autorefresh_min": 5,
     "ultima_alerta_son": "",
 }
@@ -264,27 +263,26 @@ def calc_pnl():
 # INDICADORES TECNICOS
 # ================================================================
 ACTIVOS = {
-    # ── FOREX ──────────────────────────────────────────────────
-    "EUR/USD":    {"yahoo": "EURUSD=X",  "tipo": "forex",      "iq": "EUR/USD"},
-    "GBP/USD":    {"yahoo": "GBPUSD=X",  "tipo": "forex",      "iq": "GBP/USD"},
-    "USD/JPY":    {"yahoo": "JPY=X",     "tipo": "forex",      "iq": "USD/JPY"},
-    "AUD/USD":    {"yahoo": "AUDUSD=X",  "tipo": "forex",      "iq": "AUD/USD"},
-    "USD/CAD":    {"yahoo": "CAD=X",     "tipo": "forex",      "iq": "USD/CAD"},
-    "EUR/GBP":    {"yahoo": "EURGBP=X",  "tipo": "forex",      "iq": "EUR/GBP"},
-    # ── MATERIAS PRIMAS ────────────────────────────────────────
-    "GOLD":       {"yahoo": "GC=F",      "tipo": "commodity",  "iq": "Gold"},
-    "SILVER":     {"yahoo": "SI=F",      "tipo": "commodity",  "iq": "Silver"},
-    "OIL WTI":    {"yahoo": "CL=F",      "tipo": "commodity",  "iq": "Light Crude Oil WTI"},
-    "OIL BRENT":  {"yahoo": "BZ=F",      "tipo": "commodity",  "iq": "Brent Crude Oil"},
-    "NAT GAS":    {"yahoo": "NG=F",      "tipo": "commodity",  "iq": "Natural Gas"},
-    "COPPER":     {"yahoo": "HG=F",      "tipo": "commodity",  "iq": "Copper"},
-    # ── INDICES ────────────────────────────────────────────────
-    "US 100":     {"yahoo": "NQ=F",      "tipo": "index",      "iq": "US 100"},
-    "US 500":     {"yahoo": "ES=F",      "tipo": "index",      "iq": "US 500"},
-    "US 30":      {"yahoo": "YM=F",      "tipo": "index",      "iq": "US 30"},
-    # ── CRYPTO ─────────────────────────────────────────────────
-    "BTC/USD":    {"yahoo": "BTC-USD",   "tipo": "crypto",     "iq": "Bitcoin"},
-    "ETH/USD":    {"yahoo": "ETH-USD",   "tipo": "crypto",     "iq": "Ethereum"},
+    # FOREX
+    "EUR/USD":   {"yahoo": "EURUSD=X",  "tipo": "forex"},
+    "GBP/USD":   {"yahoo": "GBPUSD=X",  "tipo": "forex"},
+    "USD/JPY":   {"yahoo": "JPY=X",     "tipo": "forex"},
+    "AUD/USD":   {"yahoo": "AUDUSD=X",  "tipo": "forex"},
+    "USD/CAD":   {"yahoo": "CAD=X",     "tipo": "forex"},
+    "EUR/GBP":   {"yahoo": "EURGBP=X",  "tipo": "forex"},
+    # MATERIAS PRIMAS
+    "XAU/USD":   {"yahoo": "GC=F",      "tipo": "commodity"},
+    "XAG/USD":   {"yahoo": "SI=F",      "tipo": "commodity"},
+    "CRUDE OIL": {"yahoo": "CL=F",      "tipo": "commodity"},
+    "NAT GAS":   {"yahoo": "NG=F",      "tipo": "commodity"},
+    "COPPER":    {"yahoo": "HG=F",      "tipo": "commodity"},
+    # INDICES
+    "NAS100":    {"yahoo": "NQ=F",      "tipo": "index"},
+    "SP500":     {"yahoo": "ES=F",      "tipo": "index"},
+    "DOW30":     {"yahoo": "YM=F",      "tipo": "index"},
+    # CRYPTO
+    "BTC/USD":   {"yahoo": "BTC-USD",   "tipo": "crypto"},
+    "ETH/USD":   {"yahoo": "ETH-USD",   "tipo": "crypto"},
 }
 
 @st.cache_data(ttl=60)
@@ -380,11 +378,10 @@ def analizar_activo_1min(symbol):
         "hora": datetime.now().strftime("%H:%M:%S"),
     }
 
-def analizar_activo_swing(symbol, tf="H1"):
+def analizar_activo_swing(symbol, tf="1h"):
     """Analiza activo para swing trading H1/H4"""
-    tmap = {"M15": ("15m","5d"), "H1": ("1h","30d"), "H4": ("4h","60d"), "D1": ("1d","90d")}
-    interval, period = tmap.get(tf, ("1h","30d"))
-
+    interval = "1h" if tf == "H1" else "4h" if tf == "H4" else "1d"
+    period   = "30d" if tf in ("H1","H4") else "90d"
     df = obtener_datos(symbol, period=period, interval=interval)
     if df is None or len(df) < 50: return None
 
@@ -555,11 +552,10 @@ background:#0d1525;border:1px solid #1e3050;border-radius:12px;padding:14px 20px
 # ================================================================
 # TABS
 # ================================================================
-tab_scan1, tab_swing, tab_strat, tab_hector, tab_noticias, tab_ops, tab_diario, tab_binarias, tab_copy, tab_codigos = st.tabs([
-    "⚡ SCANNER 1MIN", "📈 SWING + IA GRAFICO",
+tab_scan1, tab_swing, tab_swing_ia, tab_strat, tab_hector, tab_ops, tab_diario, tab_binarias, tab_copy, tab_codigos = st.tabs([
+    "⚡ SCANNER 1MIN", "📈 SWING SCANNER", "🖼 SWING IA GRAFICO",
     "🎯 ESTRATEGIA EMA+QQE",
     "🔺 HECTOR SCANNER",
-    "📰 NOTICIAS + IA",
     "📋 REGISTRO", "📓 DIARIO", "🤖 SCRIPTS LUA", "👥 COPY", "💻 CODIGOS QQE"
 ])
 
@@ -584,7 +580,8 @@ with tab_scan1:
                 st_autorefresh(interval=ar_min * 60 * 1000, key="ar_main_1min")
             st.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4ade80;">● ACTIVO — {ar_min}min</div>', unsafe_allow_html=True)
     with c4:
-        activos_sel1 = st.multiselect("Activos", list(ACTIVOS.keys()), default=["EUR/USD","GBP/USD","XAU/USD"], key="act_1min", label_visibility="collapsed")
+        _def_1min = [a for a in ["EUR/USD","GBP/USD","XAU/USD"] if a in ACTIVOS]
+        activos_sel1 = st.multiselect("Activos", list(ACTIVOS.keys()), default=_def_1min, key="act_1min", label_visibility="collapsed")
 
     if st.session_state.radar_bloqueado:
         st.error("🛑 RADAR BLOQUEADO — Stop Loss diario alcanzado.")
@@ -695,315 +692,268 @@ with tab_scan1:
     </div>""", unsafe_allow_html=True)
 
 # ================================================================
-# TAB 2 — SWING SCANNER + IA GRAFICO (FUSIONADO)
+# TAB 2 — SWING SCANNER
 # ================================================================
 with tab_swing:
-    st.markdown('<div class="sec">📈 SWING SCANNER + IA GRAFICO — M15 / H1 / H4 / D1</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec">SWING TRADING SCANNER — H1 / H4</div>', unsafe_allow_html=True)
 
-    sub_scan, sub_ia = st.tabs(["📊 Scanner Tecnico", "🧠 IA Grafico"])
+    c1, c2, c3 = st.columns([2,2,2])
+    with c1:
+        swing_btn = st.button("📈 ESCANEAR SWING", key="swing_scan_btn", use_container_width=True)
+    with c2:
+        tf_sel = st.selectbox("Temporalidad", ["H1","H4","D1"], key="swing_tf")
+    with c3:
+        activos_swing = st.multiselect("Activos", list(ACTIVOS.keys()), default=list(ACTIVOS.keys()), key="act_swing", label_visibility="collapsed")
 
-    # ─── SUB-TAB: SCANNER TECNICO ─────────────────────────────
-    with sub_scan:
-        c1, c2, c3, c4 = st.columns([2,2,2,2])
-        with c1:
-            swing_btn = st.button("📈 ESCANEAR SWING", key="swing_scan_btn", use_container_width=True)
-        with c2:
-            tf_sel = st.selectbox("Temporalidad", ["M15","H1","H4","D1"], index=1, key="swing_tf")
-        with c3:
-            tipo_sw = st.selectbox("Tipo", ["Todos","forex","commodity","index","crypto"], key="swing_tipo")
-        with c4:
-            act_sw_disp = list(ACTIVOS.keys()) if tipo_sw=="Todos" else [a for a,v in ACTIVOS.items() if v["tipo"]==tipo_sw]
-            activos_swing = st.multiselect("Activos", list(ACTIVOS.keys()), default=act_sw_disp[:8] if len(act_sw_disp)>=8 else act_sw_disp, key="act_swing", label_visibility="collapsed")
+    if swing_btn:
+        swing_res = {}
+        prog2 = st.progress(0)
+        txt2  = st.empty()
+        for idx, activo in enumerate(activos_swing):
+            prog2.progress(idx / max(len(activos_swing),1))
+            txt2.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#c8920a;">📈 Analizando {activo} {tf_sel}... ({idx+1}/{len(activos_swing)})</div>', unsafe_allow_html=True)
+            r = analizar_activo_swing(ACTIVOS[activo]["yahoo"], tf_sel)
+            if r:
+                r["activo"] = activo
+                swing_res[activo] = r
+            prog2.progress((idx+1) / max(len(activos_swing),1))
+        prog2.empty(); txt2.empty()
+        st.session_state.swing_resultados = swing_res
 
-        # Asesor de temporalidad
-        tf_consejo = {
-            "M15": ("⚡ M15 — Scalping rapido. Bueno para binarias 5-15 min. Mas ruido.", "#ff9800"),
-            "H1":  ("✅ H1 — Equilibrio ideal. Menos ruido. Excelente para binarias 1h y forex intraday.", "#4ade80"),
-            "H4":  ("💎 H4 — Señales de alta calidad. Para swing 4-12 horas. Pocas pero seguras.", "#60a5fa"),
-            "D1":  ("📅 D1 — Tendencia macro. Entradas de dias o semanas. Solo forex/indices.", "#a78bfa"),
-        }
-        consejo_txt, consejo_col = tf_consejo.get(tf_sel, ("","#4a7a99"))
-        st.markdown(f'<div style="background:#0d1525;border-left:3px solid {consejo_col};padding:8px 14px;border-radius:0 6px 6px 0;font-family:Share Tech Mono,monospace;font-size:11px;color:{consejo_col};margin-bottom:12px;">{consejo_txt}</div>', unsafe_allow_html=True)
+        # Telegram swing
+        if st.session_state.tg_on and st.session_state.tg_token:
+            for activo, r in swing_res.items():
+                if r["score"] >= 75 and r["direccion"] != "ESPERAR":
+                    key_sw = f"swing_{activo}_{r['hora']}"
+                    enviadas = st.session_state.get("tg_enviadas", set())
+                    if key_sw not in enviadas:
+                        ic = "📈" if "LONG" in r["direccion"] else "📉"
+                        msg = (f"{ic} <b>SWING {tf_sel} — {activo}</b>\n"
+                               f"━━━━━━━━━━━━━━\n"
+                               f"📊 {r['direccion']} — {r['tendencia']}\n"
+                               f"🎯 Score: {r['score']}%\n"
+                               f"💰 Precio: {r['precio']:.4f}\n"
+                               f"🛑 Stop Loss: {r['sl']:.4f}\n"
+                               f"🎯 Take Profit: {r['tp']:.4f}\n"
+                               f"📊 RSI: {r['rsi']:.1f}\n"
+                               f"💵 Capital 2%: <b>${st.session_state.capital*0.02:.2f}</b>\n"
+                               f"<i>QQE Command v4 · {tf_sel}</i>")
+                        ok = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, msg)
+                        if ok:
+                            enviadas.add(key_sw)
+                            st.session_state.tg_enviadas = enviadas
+        st.rerun()
 
-        if swing_btn:
-            swing_res = {}
-            prog2 = st.progress(0)
-            txt2  = st.empty()
-            for idx, activo in enumerate(activos_swing):
-                prog2.progress(idx / max(len(activos_swing),1))
-                txt2.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#c8920a;">📈 Analizando {activo} {tf_sel}... ({idx+1}/{len(activos_swing)})</div>', unsafe_allow_html=True)
-                r = analizar_activo_swing(ACTIVOS[activo]["yahoo"], tf_sel)
-                if r:
-                    r["activo"] = activo
-                    r["iq_name"] = ACTIVOS[activo]["iq"]
-                    r["tipo"]    = ACTIVOS[activo]["tipo"]
-                    swing_res[activo] = r
-                prog2.progress((idx+1) / max(len(activos_swing),1))
-            prog2.empty(); txt2.empty()
-            st.session_state.swing_resultados = swing_res
+    # Mostrar swing
+    if hasattr(st.session_state, "swing_resultados") and st.session_state.swing_resultados:
+        res_list = sorted(st.session_state.swing_resultados.values(), key=lambda x: x["score"], reverse=True)
+        for r in res_list:
+            es_long = "LONG" in r["direccion"]
+            es_short = "SHORT" in r["direccion"]
+            card_cls = "signal-call" if es_long else "signal-put" if es_short else "signal-wait"
+            ic = "▲" if es_long else "▼" if es_short else "—"
+            col_dir = "#4ade80" if es_long else "#f87171" if es_short else "#c8920a"
+            score = r["score"]
 
-            # Telegram swing
-            if st.session_state.tg_on and st.session_state.tg_token:
-                for activo, r in swing_res.items():
-                    if r["score"] >= 75 and r["direccion"] != "ESPERAR":
-                        key_sw = f"swing_{activo}_{r['hora']}"
-                        enviadas = st.session_state.get("tg_enviadas", set())
-                        if key_sw not in enviadas:
-                            ic = "📈" if "LONG" in r["direccion"] else "📉"
-                            msg = (f"{ic} <b>SWING {tf_sel} — {activo} ({r['iq_name']})</b>\n"
-                                   f"━━━━━━━━━━━━━━\n"
-                                   f"📊 {r['direccion']} — {r['tendencia']}\n"
-                                   f"🎯 Score: {r['score']}%\n"
-                                   f"💰 Precio: {r['precio']:.4f}\n"
-                                   f"🛑 Stop Loss: {r['sl']:.4f}\n"
-                                   f"🎯 Take Profit: {r['tp']:.4f}\n"
-                                   f"📊 RSI: {r['rsi']:.1f}\n"
-                                   f"💵 Capital 2%: <b>${st.session_state.capital*0.02:.2f}</b>\n"
-                                   f"<i>QQE Command v7 · {tf_sel}</i>")
-                            ok = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, msg)
-                            if ok:
-                                enviadas.add(key_sw)
-                                st.session_state.tg_enviadas = enviadas
-            st.rerun()
-
-        # Mostrar swing
-        if hasattr(st.session_state, "swing_resultados") and st.session_state.swing_resultados:
-            res_list = sorted(st.session_state.swing_resultados.values(), key=lambda x: x["score"], reverse=True)
-            for r in res_list:
-                es_long  = "LONG" in r["direccion"]
-                es_short = "SHORT" in r["direccion"]
-                card_cls = "signal-call" if es_long else "signal-put" if es_short else "signal-wait"
-                ic       = "▲" if es_long else "▼" if es_short else "—"
-                col_dir  = "#4ade80" if es_long else "#f87171" if es_short else "#c8920a"
-                score    = r["score"]
-                tipo_badge = {"forex":"FOREX","commodity":"MATERIA PRIMA","index":"INDICE","crypto":"CRYPTO"}.get(r.get("tipo",""),"")
-                tipo_col   = {"forex":"#60a5fa","commodity":"#fbbf24","index":"#a78bfa","crypto":"#fb923c"}.get(r.get("tipo",""),"#94a3b8")
-
-                # Cartel señal destacado
-                if es_long or es_short:
-                    st.markdown(f"""
-                    <div style="background:{'#0a3020' if es_long else '#200a0a'};border:2px solid {col_dir};border-radius:10px;padding:12px 20px;margin-bottom:6px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:36px;color:{col_dir};">{ic}</div>
-                      <div>
-                        <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:22px;color:#c8d8e8;">{r.get("iq_name",r["activo"])}</div>
-                        <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:{tipo_col};">{tipo_badge} · {r.get("tf","")}</div>
-                      </div>
-                      <div style="margin-left:auto;text-align:center;">
-                        <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:28px;color:{col_dir};">{"SUBE ▲" if es_long else "BAJA ▼"}</div>
-                        <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">AHORA · {r.get("hora","")}</div>
-                      </div>
-                      <div style="text-align:center;background:#060c18;border-radius:8px;padding:8px 16px;">
-                        <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">CONFIANZA</div>
-                        <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:24px;color:{col_dir};">{score}%</div>
-                      </div>
-                    </div>""", unsafe_allow_html=True)
-
-                st.markdown(f"""
-                <div class="{card_cls}" style="margin-bottom:14px;">
-                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px;">
-                    <div style="background:#060c18;border-radius:6px;padding:10px;text-align:center;">
-                      <div style="font-family:Share Tech Mono,monospace;font-size:8px;color:#4a7a99;">PRECIO</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8d8e8;">{r["precio"]:.4f}</div>
-                    </div>
-                    <div style="background:#3a0a0a;border:1px solid #dc2626;border-radius:6px;padding:10px;text-align:center;">
-                      <div style="font-family:Share Tech Mono,monospace;font-size:8px;color:#f87171;">STOP LOSS</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#f87171;">{r["sl"]:.4f}</div>
-                    </div>
-                    <div style="background:#0a3020;border:1px solid #16a34a;border-radius:6px;padding:10px;text-align:center;">
-                      <div style="font-family:Share Tech Mono,monospace;font-size:8px;color:#4ade80;">TAKE PROFIT</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#4ade80;">{r["tp"]:.4f}</div>
-                    </div>
-                  </div>
-                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px;">
-                    <div style="text-align:center;"><span style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">RSI: </span><span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;color:#c8d8e8;">{r["rsi"]:.1f}</span></div>
-                    <div style="text-align:center;"><span style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">EMA20: </span><span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;color:#c8d8e8;">{r["ema20"]:.4f}</span></div>
-                    <div style="text-align:center;"><span style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">ATR: </span><span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;color:#c8d8e8;">{r["atr"]:.4f}</span></div>
-                  </div>
-                </div>""", unsafe_allow_html=True)
-        else:
-            st.markdown("""
-            <div style="text-align:center;padding:60px 20px;background:#0d1525;border:2px dashed #1e3050;border-radius:12px;margin-top:10px;">
-              <div style="font-size:48px;margin-bottom:10px;">📈</div>
-              <div style="font-family:Rajdhani,sans-serif;font-size:20px;color:#4a7a99;">Presiona ESCANEAR SWING</div>
-              <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#2a3a55;margin-top:6px;">M15 / H1 / H4 / D1 — con SL y TP calculados por ATR</div>
+            st.markdown(f"""
+            <div class="{card_cls}">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+                <div>
+                  <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:20px;color:#c8d8e8;">{r['activo']}</span>
+                  <span style="margin-left:8px;" class="badge {'badge-green' if es_long else 'badge-red' if es_short else 'badge-gold'}">{ic} {r['direccion']}</span>
+                  <span style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;margin-left:8px;">{r['tf']}</span>
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:22px;color:{col_dir};">{score}%</div>
+                  <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">SCORE</div>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px;">
+                <div style="background:#060c18;border-radius:6px;padding:10px;text-align:center;">
+                  <div style="font-family:Share Tech Mono,monospace;font-size:8px;color:#4a7a99;">PRECIO</div>
+                  <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8d8e8;">{r['precio']:.4f}</div>
+                </div>
+                <div style="background:#3a0a0a;border:1px solid #dc2626;border-radius:6px;padding:10px;text-align:center;">
+                  <div style="font-family:Share Tech Mono,monospace;font-size:8px;color:#f87171;">STOP LOSS</div>
+                  <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#f87171;">{r['sl']:.4f}</div>
+                </div>
+                <div style="background:#0a3020;border:1px solid #16a34a;border-radius:6px;padding:10px;text-align:center;">
+                  <div style="font-family:Share Tech Mono,monospace;font-size:8px;color:#4ade80;">TAKE PROFIT</div>
+                  <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#4ade80;">{r['tp']:.4f}</div>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px;">
+                <div style="text-align:center;"><span style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">RSI: </span><span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;color:#c8d8e8;">{r['rsi']:.1f}</span></div>
+                <div style="text-align:center;"><span style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">EMA20: </span><span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;color:#c8d8e8;">{r['ema20']:.4f}</span></div>
+                <div style="text-align:center;"><span style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">ATR: </span><span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;color:#c8d8e8;">{r['atr']:.4f}</span></div>
+              </div>
             </div>""", unsafe_allow_html=True)
-
-    # ─── SUB-TAB: IA GRAFICO ──────────────────────────────────
-    with sub_ia:
+    else:
         st.markdown("""
-        <div style="background:#0d1525;border:1px solid #c8920a;border-radius:12px;padding:14px 18px;margin-bottom:16px;">
-          <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:16px;color:#c8920a;margin-bottom:8px;">Como usar</div>
-          <div style="font-size:13px;color:#94a3b8;line-height:1.9;">
-            1. Abrí IQ Option → seleccioná el activo → temporalidad H1 o H4<br>
-            2. Sacá captura de pantalla del grafico<br>
-            3. Completá los datos del trade abajo<br>
-            4. Subí la imagen → la IA analiza precio, noticias actuales y da una conclusion accionable
-          </div>
+        <div style="text-align:center;padding:60px 20px;background:#0d1525;border:2px dashed #1e3050;border-radius:12px;margin-top:10px;">
+          <div style="font-size:48px;margin-bottom:10px;">📈</div>
+          <div style="font-family:Rajdhani,sans-serif;font-size:20px;color:#4a7a99;">Presiona ESCANEAR SWING</div>
+          <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#2a3a55;margin-top:6px;">Analiza H1/H4 con SL y TP calculados por ATR</div>
         </div>""", unsafe_allow_html=True)
 
-        if not get_ia_ok():
-            st.markdown('<div style="background:#3a0a0a;border:1px solid #dc2626;border-radius:8px;padding:12px;color:#f87171;font-family:Share Tech Mono,monospace;font-size:11px;">Necesitas la clave API de Anthropic en el sidebar para usar el analizador.</div>', unsafe_allow_html=True)
-        else:
-            col_a, col_b, col_c = st.columns(3)
-            with col_a:
-                activo_ia = st.selectbox("Activo", list(ACTIVOS.keys()) + ["Otro"], key="ia_activo")
-            with col_b:
-                tf_ia = st.selectbox("Temporalidad", ["M15 (15 min)","H1 (1 hora)","H4 (4 horas)","D1 (diario)"], key="ia_tf")
-            with col_c:
-                dir_ia = st.selectbox("Direccion que analizas", ["Sin preferencia","CALL / LONG (sube)","PUT / SHORT (baja)"], key="ia_dir")
+# ================================================================
+# TAB 3 — SWING IA GRAFICO
+# ================================================================
+with tab_swing_ia:
+    st.markdown('<div class="sec">ANALIZADOR IA — CAPTURA DE GRAFICO IQ OPTION</div>', unsafe_allow_html=True)
 
-            col_d, col_e = st.columns(2)
-            with col_d:
-                precio_ia = st.text_input("Precio actual (opcional)", placeholder="1.0842", key="ia_precio")
-            with col_e:
-                notas_ia = st.text_input("Notas adicionales", placeholder="Rompio resistencia, noticias hoy...", key="ia_notas")
+    st.markdown("""
+    <div style="background:#0d1525;border:1px solid #c8920a;border-radius:12px;padding:14px 18px;margin-bottom:16px;">
+      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:16px;color:#c8920a;margin-bottom:8px;">Como usar</div>
+      <div style="font-size:13px;color:#94a3b8;line-height:1.9;">
+        1. Abrí IQ Option → seleccioná el activo → temporalidad H1 o H4<br>
+        2. Sacá captura de pantalla del grafico (iPhone: lateral + subir volumen)<br>
+        3. Completá los datos del trade abajo<br>
+        4. Subí la imagen → la IA analiza y te dice la probabilidad, SL y TP recomendados
+      </div>
+    </div>""", unsafe_allow_html=True)
+
+    if not get_ia_ok():
+        st.markdown('<div style="background:#3a0a0a;border:1px solid #dc2626;border-radius:8px;padding:12px;color:#f87171;font-family:Share Tech Mono,monospace;font-size:11px;">Necesitas la clave API de Anthropic en el sidebar para usar el analizador.</div>', unsafe_allow_html=True)
+    else:
+        # FORMULARIO DE CONTEXTO
+        st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;margin-bottom:8px;">DATOS DEL TRADE</div>', unsafe_allow_html=True)
+
+        col_a, col_b, col_c = st.columns(3)
+        with col_a:
+            activo_ia = st.selectbox("Activo", list(ACTIVOS.keys()) + ["Otro"], key="ia_activo")
+        with col_b:
+            tf_ia = st.selectbox("Temporalidad", ["H1 (1 hora)","H4 (4 horas)","D1 (diario)"], key="ia_tf")
+        with col_c:
+            dir_ia = st.selectbox("Direccion que analizas", ["Sin preferencia","CALL / LONG (sube)","PUT / SHORT (baja)"], key="ia_dir")
+
+        col_d, col_e = st.columns(2)
+        with col_d:
+            precio_ia = st.text_input("Precio actual (opcional)", placeholder="1.0842", key="ia_precio")
+        with col_e:
+            notas_ia = st.text_input("Notas adicionales (opcional)", placeholder="Rompio resistencia, noticias hoy...", key="ia_notas")
+
+        st.markdown("---")
+
+        # MULTIPLES IMAGENES
+        st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;margin-bottom:8px;">CAPTURA DEL GRAFICO — podes subir hasta 3 imagenes (H1 + H4 + M15)</div>', unsafe_allow_html=True)
+
+        imgs = st.file_uploader("", type=["png","jpg","jpeg","webp"], accept_multiple_files=True, key="ia_imgs", label_visibility="collapsed")
+
+        if imgs:
+            # Preview
+            cols_prev = st.columns(min(len(imgs), 3))
+            for i, img in enumerate(imgs[:3]):
+                with cols_prev[i]:
+                    st.image(img, use_column_width=True)
+                    st.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;text-align:center;">{img.name}</div>', unsafe_allow_html=True)
 
             st.markdown("---")
-            st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;margin-bottom:8px;">CAPTURA DEL GRAFICO — podes subir hasta 3 imagenes (H1 + H4 + M15)</div>', unsafe_allow_html=True)
 
-            imgs = st.file_uploader("", type=["png","jpg","jpeg","webp"], accept_multiple_files=True, key="ia_imgs", label_visibility="collapsed")
+            if st.button("🧠 ANALIZAR CON IA — SWING TRADING", key="ia_analizar_swing", use_container_width=True):
+                with st.spinner("La IA está analizando el grafico..."):
+                    try:
+                        # Construir contenido con todas las imagenes
+                        content = []
+                        for img in imgs[:3]:
+                            ext = img.name.split(".")[-1].lower()
+                            mtype = "image/jpeg" if ext in ("jpg","jpeg") else f"image/{ext}"
+                            b64 = base64.b64encode(img.read()).decode()
+                            content.append({"type":"image","source":{"type":"base64","media_type":mtype,"data":b64}})
 
-            if imgs:
-                cols_prev = st.columns(min(len(imgs), 3))
-                for i, img in enumerate(imgs[:3]):
-                    with cols_prev[i]:
-                        st.image(img, use_column_width=True)
-                        st.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;text-align:center;">{img.name}</div>', unsafe_allow_html=True)
+                        # Contexto adicional
+                        ctx_dir = dir_ia if dir_ia != "Sin preferencia" else "sin direccion previa"
+                        ctx_precio = f"Precio actual: {precio_ia}." if precio_ia else ""
+                        ctx_notas = f"Contexto adicional: {notas_ia}." if notas_ia else ""
+                        ctx_capital = f"Capital de Hector: ${st.session_state.capital:.2f}. Entrada 2%: ${st.session_state.capital*0.02:.2f}."
 
-                st.markdown("---")
-
-                if st.button("🧠 ANALIZAR CON IA — SWING + NOTICIAS", key="ia_analizar_swing", use_container_width=True):
-                    with st.spinner("La IA busca noticias y analiza el grafico..."):
-                        try:
-                            content = []
-                            for img in imgs[:3]:
-                                ext   = img.name.split(".")[-1].lower()
-                                mtype = "image/jpeg" if ext in ("jpg","jpeg") else f"image/{ext}"
-                                b64   = base64.b64encode(img.read()).decode()
-                                content.append({"type":"image","source":{"type":"base64","media_type":mtype,"data":b64}})
-
-                            ctx_dir     = dir_ia if dir_ia != "Sin preferencia" else "sin preferencia"
-                            ctx_precio  = f"Precio actual: {precio_ia}." if precio_ia else ""
-                            ctx_notas   = f"Contexto adicional: {notas_ia}." if notas_ia else ""
-                            ctx_capital = f"Capital de Hector: ${st.session_state.capital:.2f}. Entrada 2%: ${st.session_state.capital*0.02:.2f}."
-                            iq_name     = ACTIVOS.get(activo_ia, {}).get("iq", activo_ia)
-
-                            content.append({"type":"text","text":f"""Analiza este grafico de {activo_ia} ({iq_name} en IQ Option) en {tf_ia}.
+                        content.append({"type":"text","text":f"""Analiza este grafico de {activo_ia} en {tf_ia}.
 El trader considera: {ctx_dir}. {ctx_precio} {ctx_notas} {ctx_capital}
 
-Dame un analisis COMPLETO."""})
+Dame un analisis COMPLETO de swing trading."""})
 
-                            sys_swing = f"""Eres el analista de swing trading y macro-economico personal de Hector, trader argentino que opera en IQ Option con opciones binarias y forex.
-Tu tarea: analizar el grafico Y buscar noticias/eventos macroeconómicos recientes que impacten al activo, luego dar una conclusion fusionada.
+                        sys_swing = f"""Eres el analista de swing trading personal de Hector. Opera en IQ Option con opciones H1 y H4.
+Tu objetivo: analizar el grafico y dar una recomendacion CLARA y ACCIONABLE.
 
-ESTRUCTURA OBLIGATORIA de tu respuesta (respeta exactamente estos titulos):
+ESTRUCTURA OBLIGATORIA de tu respuesta:
+1. DECISION: ENTRAR CALL / ENTRAR PUT / ESPERAR (en grande)
+2. PROBABILIDAD DE EXITO: X% (estimacion honesta)
+3. POR QUE: 2-3 lineas del razonamiento tecnico
+4. STOP LOSS recomendado: precio exacto o distancia en pips/puntos
+5. TAKE PROFIT: precio exacto o distancia (minimo ratio 1:2)
+6. TIEMPO ESTIMADO: cuanto puede tardar el movimiento
+7. QUE INVALIDARIA la señal: una linea
 
-## 📊 DECISION
-ENTRAR CALL (sube) / ENTRAR PUT (baja) / ESPERAR (en grande y claro)
+Maximo 200 palabras. En espanol. Directo. Sin rodeos.
+Si el grafico no es claro o hay riesgo alto, decilo sin dudar."""
 
-## 📰 NOTICIAS / CONTEXTO MACRO
-Lista 2-3 eventos o noticias recientes relevantes para este activo.
-Ejemplo: "Guerra en el Golfo → sube petroleo" / "Fed sube tasas → dolar fuerte" / "Datos empleo EE.UU. → eurusd baja"
-Si no hay noticias relevantes, decilo.
+                        resp = requests.post("https://api.anthropic.com/v1/messages",
+                            headers={"Content-Type":"application/json",
+                                     "x-api-key": st.session_state.get("api_key",""),
+                                     "anthropic-version":"2023-06-01"},
+                            json={"model":"claude-sonnet-4-20250514","max_tokens":600,
+                                  "system":sys_swing,
+                                  "messages":[{"role":"user","content":content}]},
+                            timeout=60)
 
-## 🔗 FUSION TECNICO + MACRO
-1 parrafo corto: cómo las noticias confirman O contradicen lo que muestra el grafico tecnico.
-
-## 🎯 NIVELES
-- Stop Loss: (precio o distancia)
-- Take Profit: (precio, minimo ratio 1:2)
-- Tiempo estimado: (cuanto puede tardar)
-
-## ⚠ INVALIDACION
-Una linea: que nivel o evento invalidaria la señal.
-
-Maximo 300 palabras. En espanol. Directo. Sin rodeos.
-Si hay conflicto entre tecnico y macro, priorizá la macro y avisar."""
-
-                            resp = requests.post("https://api.anthropic.com/v1/messages",
-                                headers={{"Content-Type":"application/json",
-                                         "x-api-key": st.session_state.get("api_key",""),
-                                         "anthropic-version":"2023-06-01"}},
-                                json={{"model":"claude-sonnet-4-20250514","max_tokens":800,
-                                      "system":sys_swing,
-                                      "tools":[{{"type":"web_search_20250305","name":"web_search"}}],
-                                      "messages":[{{"role":"user","content":content}}]}},
-                                timeout=90)
-
-                            if resp.status_code == 200:
-                                rdata = resp.json()
-                                texto = " ".join(
-                                    b["text"] for b in rdata.get("content",[])
-                                    if b.get("type") == "text"
-                                )
-                                st.session_state[f"swing_ia_resp_{{activo_ia}}"] = {{
-                                    "texto": texto, "hora": datetime.now().strftime("%H:%M"),
-                                    "activo": activo_ia, "tf": tf_ia, "iq_name": iq_name
-                                }}
-                                st.rerun()
-                            else:
-                                st.error(f"Error API: {{resp.status_code}} — {{resp.text[:200]}}")
-                        except Exception as e:
-                            st.error(f"Error: {{e}}")
-            else:
-                st.markdown("""
-                <div style="text-align:center;padding:50px 20px;background:#0d1525;border:2px dashed #1e3050;border-radius:12px;margin-top:10px;">
-                  <div style="font-size:52px;margin-bottom:12px;">📱</div>
-                  <div style="font-family:Rajdhani,sans-serif;font-size:20px;color:#4a7a99;">Subi la captura de IQ Option</div>
-                  <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#2a3a55;margin-top:8px;">Podes subir hasta 3 graficos — M15 + H1 + H4</div>
-                </div>""", unsafe_allow_html=True)
-
-            # Mostrar resultado IA
-            resp_key = f"swing_ia_resp_{activo_ia}"
-            if resp_key in st.session_state and st.session_state[resp_key]:
-                res_ia = st.session_state[resp_key]
-                texto  = res_ia["texto"]
-
-                if "ENTRAR CALL" in texto.upper() or texto.upper().count("CALL") > texto.upper().count("PUT"):
-                    rc,rb,rbr,ri = "#4ade80","#0a3020","#16a34a","🟢"
-                elif "ENTRAR PUT" in texto.upper() or "PUT" in texto.upper()[:80]:
-                    rc,rb,rbr,ri = "#f87171","#200a0a","#dc2626","🔴"
-                elif "ESPERAR" in texto.upper()[:80]:
-                    rc,rb,rbr,ri = "#fbbf24","#2a1a00","#c8920a","🟡"
-                else:
-                    rc,rb,rbr,ri = "#c8d8e8","#0d1525","#1e3050","⚪"
-
-                st.markdown(f"""
-                <div style="background:{rb};border:2px solid {rbr};border-radius:14px;padding:20px;margin-top:16px;">
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-                    <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:24px;color:{rc};">{ri} ANALISIS IA + MACRO — {res_ia.get("iq_name",res_ia["activo"])}</div>
-                    <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">{res_ia["tf"]} · {res_ia["hora"]}</div>
-                  </div>
-                  <div style="font-size:14px;color:#c8d8e8;line-height:2.0;">{texto.replace(chr(10),"<br>")}</div>
-                  <div style="margin-top:12px;padding-top:10px;border-top:1px solid {rbr};font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">
-                    Capital: ${st.session_state.capital:.2f} · Entrada 2%: ${st.session_state.capital*0.02:.2f} · QQE Command v7
-                  </div>
-                </div>""", unsafe_allow_html=True)
-
-                col_g1, col_g2 = st.columns(2)
-                with col_g1:
-                    if st.button("📓 Guardar en Diario", key="guardar_diario_ia"):
-                        st.session_state.diario.append({
-                            "fecha": date.today().strftime("%d/%m/%Y"),
-                            "hora": res_ia["hora"],
-                            "tipo": "ANALISIS IA+MACRO",
-                            "activo": res_ia["activo"],
-                            "texto": texto,
-                            "tf": res_ia["tf"],
-                        })
-                        st.success("Guardado en el diario!")
-                with col_g2:
-                    if st.button("📤 Enviar a Telegram", key="tg_ia_swing"):
-                        if st.session_state.tg_token:
-                            msg_ia = (f"{ri} <b>IA SWING — {res_ia.get('iq_name',res_ia['activo'])} {res_ia['tf']}</b>\n"
-                                      f"━━━━━━━━━━━━━━\n"
-                                      f"{texto[:800]}\n"
-                                      f"<i>QQE Command v7 · {res_ia['hora']}</i>")
-                            ok = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, msg_ia)
-                            st.success("Enviado!" if ok else "Error al enviar")
+                        if resp.status_code == 200:
+                            texto = resp.json()["content"][0]["text"]
+                            st.session_state[f"swing_ia_resp_{activo_ia}"] = {
+                                "texto": texto, "hora": datetime.now().strftime("%H:%M"),
+                                "activo": activo_ia, "tf": tf_ia
+                            }
+                            st.rerun()
                         else:
-                            st.warning("Configura el token de Telegram en el sidebar")
+                            st.error(f"Error API: {resp.status_code} — {resp.text[:200]}")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+        else:
+            st.markdown("""
+            <div style="text-align:center;padding:50px 20px;background:#0d1525;border:2px dashed #1e3050;border-radius:12px;margin-top:10px;">
+              <div style="font-size:52px;margin-bottom:12px;">📱</div>
+              <div style="font-family:Rajdhani,sans-serif;font-size:20px;color:#4a7a99;">Subi la captura de IQ Option</div>
+              <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#2a3a55;margin-top:8px;">Podes subir hasta 3 graficos — H1 + H4 + M15</div>
+            </div>""", unsafe_allow_html=True)
 
+        # Mostrar resultado IA
+        resp_key = f"swing_ia_resp_{activo_ia if 'activo_ia' in dir() else 'XAU/USD'}"
+        if resp_key in st.session_state and st.session_state[resp_key]:
+            res_ia = st.session_state[resp_key]
+            texto = res_ia["texto"]
+
+            # Color segun decision
+            if "ENTRAR CALL" in texto.upper() or "CALL" in texto.upper()[:50]:
+                rc,rb,rbr,ri = "#4ade80","#0a3020","#16a34a","🟢"
+            elif "ENTRAR PUT" in texto.upper() or "PUT" in texto.upper()[:50]:
+                rc,rb,rbr,ri = "#f87171","#200a0a","#dc2626","🔴"
+            elif "ESPERAR" in texto.upper()[:80]:
+                rc,rb,rbr,ri = "#fbbf24","#2a1a00","#c8920a","🟡"
+            else:
+                rc,rb,rbr,ri = "#c8d8e8","#0d1525","#1e3050","⚪"
+
+            st.markdown(f"""
+            <div style="background:{rb};border:2px solid {rbr};border-radius:14px;padding:20px;margin-top:16px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:24px;color:{rc};">{ri} ANALISIS IA — {res_ia['activo']}</div>
+                <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">{res_ia['tf']} · {res_ia['hora']}</div>
+              </div>
+              <div style="font-size:14px;color:#c8d8e8;line-height:2.0;">{texto.replace(chr(10),"<br>")}</div>
+              <div style="margin-top:12px;padding-top:10px;border-top:1px solid {rbr};font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">
+                Capital: ${st.session_state.capital:.2f} · Entrada 2%: ${st.session_state.capital*0.02:.2f} · QQE Command v4
+              </div>
+            </div>""", unsafe_allow_html=True)
+
+            # Guardar en diario
+            if st.button("📓 Guardar en Diario", key="guardar_diario_ia"):
+                st.session_state.diario.append({
+                    "fecha": date.today().strftime("%d/%m/%Y"),
+                    "hora": res_ia["hora"],
+                    "tipo": "ANALISIS IA",
+                    "activo": res_ia["activo"],
+                    "texto": texto,
+                    "tf": res_ia["tf"],
+                })
+                st.success("Guardado en el diario!")
 
 # ================================================================
 # TAB 4 — ESTRATEGIA EMA + QQE + VELA DE CONFIRMACION
@@ -1122,8 +1072,9 @@ with tab_strat:
     with c1:
         scan_strat_btn = st.button("🎯 ESCANEAR TRIPLE CONFIRMACION", key="scan_strat", use_container_width=True)
     with c2:
+        _def_strat = [a for a in ["EUR/USD","GBP/USD","XAU/USD"] if a in ACTIVOS]
         activos_strat = st.multiselect("Activos a escanear", list(ACTIVOS.keys()),
-            default=["EUR/USD","GBP/USD","XAU/USD"], key="act_strat")
+            default=_def_strat, key="act_strat")
 
     if scan_strat_btn:
         resultados_strat = []
@@ -1373,7 +1324,7 @@ with tab_hector:
         activos_hector = st.multiselect(
             "Activos",
             list(ACTIVOS.keys()),
-            default=activos_disponibles[:8] if len(activos_disponibles) >= 8 else activos_disponibles,
+            default=[a for a in (activos_disponibles[:8] if len(activos_disponibles) >= 8 else activos_disponibles) if a in ACTIVOS],
             key="act_hector"
         )
 
@@ -1687,164 +1638,6 @@ plot(0,           "Zero",   "gray",  1, 0, style.levels, na_mode.continue)'''
         st.markdown(f'<div class="code-block">{script_hector2}</div>', unsafe_allow_html=True)
         st.download_button("⬇ Descargar HECTOR 2.lua", script_hector2,
             file_name="HECTOR_2_rsi_macd.lua", mime="text/plain", key="dl_h2")
-
-# ================================================================
-# TAB NOTICIAS + IA — FUSION MACRO + TECNICO SIN IMAGEN
-# ================================================================
-with tab_noticias:
-    st.markdown('<div class="sec">📰 NOTICIAS + IA — FUSION MACRO Y TECNICO</div>', unsafe_allow_html=True)
-
-    st.markdown("""
-    <div style="background:#0d1525;border:1px solid #c8920a;border-radius:12px;padding:14px 18px;margin-bottom:16px;">
-      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:16px;color:#c8920a;margin-bottom:8px;">¿Para qué sirve esta tab?</div>
-      <div style="font-size:13px;color:#94a3b8;line-height:1.9;">
-        La IA busca noticias y eventos macro actuales relevantes para el activo que elijas, luego combina eso con el análisis técnico y da una conclusión concreta.<br>
-        Ejemplo: <b style="color:#fbbf24;">conflicto en el Golfo → sube el petróleo</b> + técnico alcista → <b style="color:#4ade80;">CONCLUSIÓN: CALL en OIL WTI</b>
-      </div>
-    </div>""", unsafe_allow_html=True)
-
-    if not get_ia_ok():
-        st.markdown('<div style="background:#3a0a0a;border:1px solid #dc2626;border-radius:8px;padding:12px;color:#f87171;font-family:Share Tech Mono,monospace;font-size:11px;">Necesitas la clave API de Anthropic en el sidebar para usar esta función.</div>', unsafe_allow_html=True)
-    else:
-        c1n, c2n, c3n = st.columns([2,2,2])
-        with c1n:
-            activo_n = st.selectbox("Activo a analizar", list(ACTIVOS.keys()), key="not_activo")
-        with c2n:
-            tf_n = st.selectbox("Temporalidad operativa", ["M1 (binaria)","M15","H1","H4","D1"], key="not_tf")
-        with c3n:
-            pregunta_n = st.text_input("Pregunta específica (opcional)", placeholder="¿Qué pasa con el oro si escala el conflicto en Gaza?", key="not_pregunta")
-
-        col_n1, col_n2 = st.columns(2)
-        with col_n1:
-            precio_n = st.text_input("Precio actual (opcional)", placeholder="2650.00", key="not_precio")
-        with col_n2:
-            sesion_n = st.selectbox("Sesión actual", ["London (07-10 UTC)","New York (13-16 UTC)","Asia (23-03 UTC)","Fuera de sesión"], key="not_sesion")
-
-        scan_noticias_btn = st.button("📰 BUSCAR NOTICIAS + ANALIZAR", key="not_scan_btn", use_container_width=True)
-
-        if scan_noticias_btn:
-            with st.spinner("Buscando noticias actuales y analizando..."):
-                try:
-                    iq_name    = ACTIVOS.get(activo_n, {}).get("iq", activo_n)
-                    tipo_activo = ACTIVOS.get(activo_n, {}).get("tipo", "")
-                    ctx_precio  = f"Precio actual: {precio_n}." if precio_n else ""
-                    ctx_pregunta = f"Pregunta específica de Hector: {pregunta_n}" if pregunta_n else ""
-                    ctx_capital = f"Capital de Hector: ${st.session_state.capital:.2f}. Entrada 1% binaria: ${st.session_state.capital*0.01:.2f}. Entrada 2% swing: ${st.session_state.capital*0.02:.2f}."
-
-                    sys_noticias = f"""Eres el analista macroeconómico y de noticias de Hector, trader argentino que opera en IQ Option.
-Tu tarea es:
-1. Buscar con web_search las noticias y eventos más recientes (últimas 48h) que impacten directamente al activo
-2. Analizar si el contexto macro favorece una posición CALL (sube) o PUT (baja)
-3. Dar una conclusión clara y accionable
-
-ESTRUCTURA OBLIGATORIA:
-
-## 📰 NOTICIAS RELEVANTES (últimas 48h)
-Lista las 3-4 noticias o eventos más importantes que encontraste con la búsqueda.
-Formato: • [Fuente] Titular breve → Impacto esperado (sube/baja/neutro)
-
-## 🌍 CONTEXTO MACRO
-1 párrafo: situación general del activo (dólar, tasas, guerra, commodities, etc.)
-
-## 🔗 CONCLUSIÓN FINAL
-**CALL ▲ / PUT ▼ / ESPERAR**
-Explicación en 2-3 lineas de por qué.
-
-## 🎯 MEJOR MOMENTO PARA ENTRAR
-Sesión recomendada y condición técnica mínima que debe verse antes de entrar.
-
-## ⚠ RIESGO PRINCIPAL
-Un evento o dato que podría invalidar el análisis.
-
-Maximo 350 palabras. En español. Directo. Formato exacto arriba."""
-
-                    resp = requests.post("https://api.anthropic.com/v1/messages",
-                        headers={"Content-Type":"application/json",
-                                 "x-api-key": st.session_state.get("api_key",""),
-                                 "anthropic-version":"2023-06-01"},
-                        json={"model":"claude-sonnet-4-20250514","max_tokens":900,
-                              "system":sys_noticias,
-                              "tools":[{"type":"web_search_20250305","name":"web_search"}],
-                              "messages":[{"role":"user","content":
-                                  f"Analiza el activo {activo_n} ({iq_name}) para operar en {tf_n} durante {sesion_n}. {ctx_precio} {ctx_pregunta} {ctx_capital}"}]},
-                        timeout=90)
-
-                    if resp.status_code == 200:
-                        rdata = resp.json()
-                        texto = " ".join(
-                            b["text"] for b in rdata.get("content",[])
-                            if b.get("type") == "text"
-                        )
-                        st.session_state["not_resultado"] = {
-                            "texto": texto, "activo": activo_n, "iq_name": iq_name,
-                            "tf": tf_n, "hora": datetime.now().strftime("%H:%M"),
-                            "sesion": sesion_n
-                        }
-                        st.rerun()
-                    else:
-                        st.error(f"Error API: {resp.status_code} — {resp.text[:200]}")
-                except Exception as e:
-                    st.error(f"Error: {e}")
-
-        # Mostrar resultado
-        if st.session_state.get("not_resultado"):
-            r_n = st.session_state["not_resultado"]
-            texto_n = r_n["texto"]
-
-            # Detectar dirección
-            if "CALL" in texto_n.upper()[:300] and "PUT" not in texto_n.upper()[:100]:
-                rc_n,rb_n,rbr_n,ri_n = "#4ade80","#0a3020","#16a34a","🟢"
-            elif "PUT" in texto_n.upper()[:300]:
-                rc_n,rb_n,rbr_n,ri_n = "#f87171","#200a0a","#dc2626","🔴"
-            elif "ESPERAR" in texto_n.upper()[:300]:
-                rc_n,rb_n,rbr_n,ri_n = "#fbbf24","#2a1a00","#c8920a","🟡"
-            else:
-                rc_n,rb_n,rbr_n,ri_n = "#c8d8e8","#0d1525","#1e3050","⚪"
-
-            st.markdown(f"""
-            <div style="background:{rb_n};border:2px solid {rbr_n};border-radius:14px;padding:20px;margin-top:16px;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
-                <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:24px;color:{rc_n};">{ri_n} NOTICIAS + MACRO — {r_n["iq_name"]}</div>
-                <div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">{r_n["tf"]} · {r_n["sesion"]} · {r_n["hora"]}</div>
-              </div>
-              <div style="font-size:14px;color:#c8d8e8;line-height:2.1;">{texto_n.replace(chr(10),"<br>")}</div>
-              <div style="margin-top:14px;padding-top:10px;border-top:1px solid {rbr_n};font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">
-                Capital: ${st.session_state.capital:.2f} · 1%: ${st.session_state.capital*0.01:.2f} · 2%: ${st.session_state.capital*0.02:.2f} · QQE Command v7
-              </div>
-            </div>""", unsafe_allow_html=True)
-
-            col_nt1, col_nt2, col_nt3 = st.columns(3)
-            with col_nt1:
-                if st.button("📓 Guardar en Diario", key="not_guardar"):
-                    st.session_state.diario.append({
-                        "fecha": date.today().strftime("%d/%m/%Y"),
-                        "hora": r_n["hora"], "tipo": "NOTICIAS+MACRO",
-                        "activo": r_n["activo"], "texto": texto_n, "tf": r_n["tf"],
-                    })
-                    st.success("Guardado!")
-            with col_nt2:
-                if st.button("📤 Enviar a Telegram", key="not_telegram"):
-                    if st.session_state.tg_token:
-                        msg_n = (f"{ri_n} <b>NOTICIAS+MACRO — {r_n['iq_name']} {r_n['tf']}</b>\n"
-                                 f"━━━━━━━━━━━━━━\n"
-                                 f"{texto_n[:800]}\n"
-                                 f"<i>QQE Command v7 · {r_n['hora']}</i>")
-                        ok = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, msg_n)
-                        st.success("Enviado!" if ok else "Error")
-                    else:
-                        st.warning("Configura Telegram en el sidebar")
-            with col_nt3:
-                csv_not = f"Fecha,Hora,Activo,TF,Sesion,Analisis\n{date.today()},{r_n['hora']},{r_n['activo']},{r_n['tf']},{r_n['sesion']},\"{texto_n.replace(chr(34),'')}\"\n"
-                st.download_button("⬇ Descargar análisis", csv_not,
-                    file_name=f"noticias_{r_n['activo']}_{r_n['hora'].replace(':','')}.csv",
-                    mime="text/csv", key="not_dl")
-        else:
-            st.markdown("""
-            <div style="text-align:center;padding:60px 20px;background:#0d1525;border:2px dashed #1e3050;border-radius:12px;margin-top:10px;">
-              <div style="font-size:52px;margin-bottom:12px;">📰</div>
-              <div style="font-family:Rajdhani,sans-serif;font-size:20px;color:#4a7a99;">Seleccioná un activo y presioná BUSCAR</div>
-              <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#2a3a55;margin-top:8px;">La IA busca noticias en tiempo real y fusiona con análisis técnico</div>
-            </div>""", unsafe_allow_html=True)
 
 # ================================================================
 # TAB 5 — REGISTRO DE OPERACIONES
@@ -2267,6 +2060,6 @@ end'''
 st.markdown(f"""
 <div style="text-align:center;margin-top:24px;padding:14px;border-top:1px solid #1e3050;">
   <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#2a3a55;letter-spacing:2px;">
-    QQE COMMAND V7 · HECTOR TRADING SYSTEM · Capital: ${st.session_state.capital:.2f} · Objetivo: $50/dia
+    QQE COMMAND V6 · HECTOR TRADING SYSTEM · Capital: ${st.session_state.capital:.2f} · Objetivo: $50/dia
   </div>
 </div>""", unsafe_allow_html=True)
