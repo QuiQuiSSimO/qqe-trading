@@ -524,6 +524,126 @@ def calc_atr(df, n=14):
     tr = pd.concat([h-l, (h-c.shift()).abs(), (l-c.shift()).abs()], axis=1).max(axis=1)
     return tr.ewm(span=n, adjust=False).mean()
 
+# ================================================================
+# QQE ENGINE — MOTOR DE SEÑALES (integrado v11)
+# ================================================================
+def calc_qqe_engine(df_raw, rsi_period=14, sf=5, qqe_factor=4.238, thresh=3.0):
+    """
+    QQE real sobre el dataframe del v10 (columnas en español).
+    Devuelve df con columnas: rsi_smooth, trend, signal, signal_quality
+    """
+    close = df_raw["cierre"].copy()
+    # RSI
+    delta = close.diff()
+    g = delta.clip(lower=0).ewm(span=rsi_period, adjust=False).mean()
+    l = (-delta.clip(upper=0)).ewm(span=rsi_period, adjust=False).mean()
+    rsi = 100 - 100 / (1 + g / l.replace(0, 1e-10))
+    # Suavizado
+    rsi_smooth = rsi.ewm(span=sf, adjust=False).mean()
+    # ATR del RSI suavizado (Wilders)
+    delta_rsi = rsi_smooth.diff().abs()
+    atr_rsi   = delta_rsi.ewm(alpha=1/(rsi_period*2-1), adjust=False).mean()
+    dar        = atr_rsi.ewm(alpha=1/(rsi_period*2-1), adjust=False).mean() * qqe_factor
+    # Bandas dinámicas
+    rs_arr = rsi_smooth.values
+    d_arr  = dar.values
+    lb_arr = np.full(len(df_raw), np.nan)
+    sb_arr = np.full(len(df_raw), np.nan)
+    tr_arr = np.zeros(len(df_raw))
+    for i in range(1, len(df_raw)):
+        if np.isnan(rs_arr[i]) or np.isnan(d_arr[i]):
+            lb_arr[i] = lb_arr[i-1] if not np.isnan(lb_arr[i-1]) else 0
+            sb_arr[i] = sb_arr[i-1] if not np.isnan(sb_arr[i-1]) else 100
+            tr_arr[i] = tr_arr[i-1]; continue
+        nlb = rs_arr[i] - d_arr[i]
+        nsb = rs_arr[i] + d_arr[i]
+        plb = lb_arr[i-1] if not np.isnan(lb_arr[i-1]) else nlb
+        psb = sb_arr[i-1] if not np.isnan(sb_arr[i-1]) else nsb
+        lb_arr[i] = max(nlb, plb) if rs_arr[i-1] > plb else nlb
+        sb_arr[i] = min(nsb, psb) if rs_arr[i-1] < psb else nsb
+        if tr_arr[i-1] == 1:
+            tr_arr[i] = -1 if rs_arr[i] < lb_arr[i] else 1
+        else:
+            tr_arr[i] =  1 if rs_arr[i] > sb_arr[i] else -1
+    result = df_raw.copy()
+    result["rsi_q"]      = rsi.values
+    result["rsi_smooth"] = rs_arr
+    result["dar"]        = d_arr
+    result["trend_q"]    = tr_arr
+    result["signal"]     = "WAIT"
+    buy_m  = (result["trend_q"] ==  1) & (result["trend_q"].shift(1) == -1)
+    sell_m = (result["trend_q"] == -1) & (result["trend_q"].shift(1) ==  1)
+    result.loc[buy_m,  "signal"] = "BUY"
+    result.loc[sell_m, "signal"] = "SELL"
+    result["signal_quality"] = "NORMAL"
+    result.loc[(result["signal"]=="BUY")  & (result["rsi_smooth"] < 50+thresh), "signal_quality"] = "ALTA"
+    result.loc[(result["signal"]=="SELL") & (result["rsi_smooth"] > 50-thresh), "signal_quality"] = "ALTA"
+    return result
+
+def run_backtest_v11(df_qqe, capital=500.0, riesgo_pct=1.0):
+    """Backtest sobre señales QQE. Entrada en cierre señal, salida en siguiente cierre."""
+    monto  = capital * riesgo_pct / 100
+    trades = []
+    sig_idx = df_qqe.index[df_qqe["signal"].isin(["BUY","SELL"])].tolist()
+    for i, idx in enumerate(sig_idx):
+        pos   = df_qqe.index.get_loc(idx)
+        if pos + 1 >= len(df_qqe): continue
+        entry = float(df_qqe["cierre"].iloc[pos])
+        exit_ = float(df_qqe["cierre"].iloc[pos + 1])
+        row   = df_qqe.loc[idx]
+        if row["signal"] == "BUY":
+            pnl = (exit_ - entry) / entry
+        else:
+            pnl = (entry - exit_) / entry
+        ganancia = monto * pnl
+        trades.append({
+            "fecha":    idx.strftime("%m/%d %H:%M") if hasattr(idx, "strftime") else str(idx),
+            "senal":    row["signal"],
+            "calidad":  row["signal_quality"],
+            "entrada":  round(entry, 5),
+            "salida":   round(exit_, 5),
+            "pnl_pct":  round(pnl*100, 2),
+            "ganancia": round(ganancia, 2),
+            "resultado": "WIN" if pnl > 0 else "LOSS",
+            "rsi":      round(float(row["rsi_smooth"]), 1),
+        })
+    if not trades:
+        return {"trades": [], "stats": {}}
+    tdf   = pd.DataFrame(trades)
+    wins  = tdf[tdf["resultado"]=="WIN"]
+    loss  = tdf[tdf["resultado"]=="LOSS"]
+    wr    = len(wins)/len(tdf)*100
+    total_g = tdf["ganancia"].sum()
+    gw    = wins["ganancia"].sum()
+    gl    = abs(loss["ganancia"].sum()) if len(loss) else 0.0001
+    cum   = tdf["ganancia"].cumsum()
+    dd    = (cum - cum.cummax()).min()
+    avg_w = wins["ganancia"].mean() if len(wins) else 0
+    avg_l = abs(loss["ganancia"].mean()) if len(loss) else 0.0001
+    racha = lambda tipo: max((sum(1 for _ in g) for k,g in __import__("itertools").groupby(tdf["resultado"]) if k==tipo), default=0)
+    stats = {
+        "total_trades": len(tdf), "wins": len(wins), "losses": len(loss),
+        "win_rate": round(wr,1), "total_ganancia": round(total_g,2),
+        "profit_factor": round(gw/gl,2), "max_drawdown": round(dd,2),
+        "rr_ratio": round(avg_w/avg_l,2), "capital_final": round(capital+total_g,2),
+        "avg_win": round(avg_w,2), "avg_loss": round(avg_l,2),
+        "racha_win": racha("WIN"), "racha_loss": racha("LOSS"),
+    }
+    return {"trades": trades, "stats": stats}
+
+def _kpi_v11(label, value, sub="", color="#c8d8e8"):
+    st.markdown(f"""<div style="background:linear-gradient(135deg,#0a1020,#0d1830);border:1px solid #1a2a45;
+        border-radius:12px;padding:16px;text-align:center;">
+        <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#4a7a99;letter-spacing:2px;margin-bottom:6px;">{label}</div>
+        <div style="font-family:'Rajdhani',sans-serif;font-size:34px;font-weight:700;color:{color};line-height:1.1;">{value}</div>
+        {"<div style='font-family:Share Tech Mono,monospace;font-size:11px;color:#4a7a99;margin-top:3px;'>"+sub+"</div>" if sub else ""}
+    </div>""", unsafe_allow_html=True)
+
+def _progbar(pct, color="#f0b429"):
+    st.markdown(f"""<div style="height:8px;background:#1a2a45;border-radius:4px;overflow:hidden;margin:4px 0;">
+        <div style="height:100%;width:{min(100,max(0,pct))}%;background:{color};border-radius:4px;transition:width .6s;"></div>
+    </div>""", unsafe_allow_html=True)
+
 def analizar_activo_1min(symbol):
     """Detecta senales de binarias 1 minuto con 3 estrategias"""
     df = obtener_datos_1min(symbol)
@@ -845,11 +965,12 @@ _play_audio(_snd, st.session_state.audio_on)
 # ================================================================
 # TABS — v10
 # ================================================================
-tab_triple, tab_noticias, tab_swing, tab_ops, tab_diario, tab_binarias, tab_copy, tab_codigos, tab_scan1 = st.tabs([
+tab_triple, tab_noticias, tab_swing, tab_ops, tab_diario, tab_binarias, tab_copy, tab_codigos, tab_scan1, tab_backtest, tab_sim, tab_educativo, tab_mejoras = st.tabs([
     "🎯 TRIPLE EN VIVO", "📰 NOTICIAS+IA",
     "📈 SWING+IA", "📋 REGISTRO", "📓 DIARIO",
     "🤖 SCRIPTS LUA", "👥 COPY", "💻 CODIGOS QQE",
-    "⚡ SCANNER"
+    "⚡ SCANNER",
+    "📊 BACKTEST", "🔮 SIMULACIÓN", "📚 EDUCATIVO", "🔧 MEJORAS"
 ])
 
 # TAB 1 — SCANNER BINARIAS 1 MINUTO
@@ -2639,6 +2760,342 @@ end'''
         st.markdown('<div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:16px;color:#7c3aed;margin-bottom:8px;">QQE 04 — CRYPTO</div>', unsafe_allow_html=True)
         st.markdown('<div style="font-size:12px;color:#94a3b8;margin-bottom:8px;">EMA50 + EMA200 + MACD + RSI<br>Activos: BTC, ETH, SOL</div>', unsafe_allow_html=True)
         st.markdown(f'<div class="code-block">{qqe04}</div>', unsafe_allow_html=True)
+
+# ================================================================
+# TAB: BACKTEST
+# ================================================================
+with tab_backtest:
+    st.markdown('<div class="sec">📊 BACKTESTING QQE — ESTADÍSTICAS AVANZADAS</div>', unsafe_allow_html=True)
+
+    bt_c1, bt_c2 = st.columns([1, 2])
+    with bt_c1:
+        st.markdown('<div style="background:#0a1020;border:1px solid #1a2a45;border-left:4px solid #f0b429;border-radius:12px;padding:18px;margin-bottom:12px;">', unsafe_allow_html=True)
+        bt_act_key = st.selectbox("Activo", list(ACTIVOS.keys()), key="bt_act")
+        bt_iv      = st.selectbox("Intervalo", ["5m","15m","1h","4h","1d"], index=2, key="bt_iv")
+        bt_cap     = st.number_input("Capital $", 50.0, 100000.0, value=float(st.session_state.capital), step=10.0, key="bt_cap")
+        bt_rsk     = st.slider("Riesgo por trade %", 0.5, 5.0, 1.0, step=0.5, key="bt_rsk")
+        st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#f0b429;letter-spacing:2px;margin:12px 0 8px;">PARÁMETROS QQE</div>', unsafe_allow_html=True)
+        bt_rsi_p = st.slider("RSI Period",    5,  30, 14, step=1,   key="bt_rsi_p")
+        bt_sf    = st.slider("Smooth Factor", 2,  20,  5, step=1,   key="bt_sf")
+        bt_qf    = st.slider("QQE Factor",    1.0, 10.0, 4.238, step=0.1, key="bt_qf", format="%.2f")
+        bt_thr   = st.slider("RSI Threshold", 0.5, 10.0, 3.0, step=0.5, key="bt_thr")
+        btn_bt   = st.button("▶ CORRER BACKTEST", key="bt_run", use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with bt_c2:
+        if btn_bt:
+            with st.spinner("Calculando señales QQE..."):
+                _ticker = ACTIVOS[bt_act_key]["yahoo"]
+                _df_raw = obtener_datos(_ticker, period="60d", interval=bt_iv)
+                if _df_raw is None or len(_df_raw) < 40:
+                    st.error("Sin datos suficientes. Probá otro intervalo o activo.")
+                else:
+                    _df_q  = calc_qqe_engine(_df_raw, bt_rsi_p, bt_sf, bt_qf, bt_thr)
+                    _bt    = run_backtest_v11(_df_q, bt_cap, bt_rsk)
+                    st.session_state["bt_result_v11"] = _bt
+                    st.session_state["bt_act_used"]   = bt_act_key
+
+        if "bt_result_v11" in st.session_state:
+            _r = st.session_state["bt_result_v11"]
+            _s = _r.get("stats", {})
+            if _s:
+                _wr_col  = "#22c55e" if _s["win_rate"]>=55 else ("#f0b429" if _s["win_rate"]>=45 else "#ef4444")
+                _pf_col  = "#22c55e" if _s["profit_factor"]>=1.5 else ("#f0b429" if _s["profit_factor"]>=1.0 else "#ef4444")
+                _gan_col = "#22c55e" if _s["total_ganancia"]>=0 else "#ef4444"
+
+                k1,k2,k3,k4 = st.columns(4)
+                with k1: _kpi_v11("WIN RATE", f"{_s['win_rate']}%", f"{_s['wins']}W / {_s['losses']}L", _wr_col)
+                with k2: _kpi_v11("PROFIT FACTOR", str(_s["profit_factor"]), "bruto/pérdida", _pf_col)
+                with k3: _kpi_v11("GANANCIA TOTAL", f"${_s['total_ganancia']:+.2f}", f"cap: ${_s['capital_final']:.2f}", _gan_col)
+                with k4: _kpi_v11("MAX DRAWDOWN", f"${_s['max_drawdown']:.2f}", "peor racha", "#ef4444")
+
+                k5,k6,k7,k8 = st.columns(4)
+                with k5: _kpi_v11("RR RATIO", f"{_s['rr_ratio']:.2f}x", "win/loss prom", "#60a5fa")
+                with k6: _kpi_v11("TOTAL TRADES", str(_s["total_trades"]), bt_iv, "#c8d8e8")
+                with k7: _kpi_v11("RACHA WIN", str(_s["racha_win"]), "seguidas ganadas", "#22c55e")
+                with k8: _kpi_v11("RACHA LOSS", str(_s["racha_loss"]), "seguidas perdidas", "#ef4444")
+
+                # Barras visuales
+                _bc1, _bc2 = st.columns(2)
+                with _bc1:
+                    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;margin:12px 0 4px;">WIN RATE</div>', unsafe_allow_html=True)
+                    _progbar(_s["win_rate"], "#22c55e")
+                    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;margin:8px 0 4px;">PROFIT FACTOR (escala x10)</div>', unsafe_allow_html=True)
+                    _progbar(min(100, _s["profit_factor"]*10), "#f0b429")
+                with _bc2:
+                    _tot_wr = (_s["avg_win"] + _s["avg_loss"]) or 1
+                    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;margin:12px 0 4px;">WIN PROM vs LOSS PROM</div>', unsafe_allow_html=True)
+                    _progbar(_s["avg_win"]/_tot_wr*100, "#22c55e")
+                    st.caption(f"WIN prom: ${_s['avg_win']:.2f}  |  LOSS prom: ${_s['avg_loss']:.2f}")
+
+                # Curva de capital
+                _trades = _r.get("trades", [])
+                if _trades:
+                    st.markdown('<div class="sec">CURVA DE CAPITAL</div>', unsafe_allow_html=True)
+                    _cap_curve = [bt_cap]
+                    for _t in _trades:
+                        _cap_curve.append(_cap_curve[-1] + _t["ganancia"])
+                    st.line_chart(pd.DataFrame({"Capital": _cap_curve}), color="#f0b429")
+
+                    # Tabla de trades
+                    st.markdown('<div class="sec">TABLA DE OPERACIONES (últimas 30)</div>', unsafe_allow_html=True)
+                    _tbl = pd.DataFrame(_trades[-30:]).copy()
+                    _tbl["ganancia"] = _tbl["ganancia"].apply(lambda x: f"${x:+.2f}")
+                    _tbl["pnl_pct"]  = _tbl["pnl_pct"].apply(lambda x: f"{x:+.2f}%")
+                    st.dataframe(_tbl[["fecha","senal","calidad","entrada","salida","pnl_pct","ganancia","resultado"]],
+                                 use_container_width=True, hide_index=True)
+            else:
+                st.warning("Sin señales en el período. Probá un intervalo mayor o ajustá los parámetros QQE.")
+        else:
+            st.markdown("""<div style="text-align:center;padding:60px;background:#0a1020;border:2px dashed #1a2a45;border-radius:14px;">
+              <div style="font-size:48px;margin-bottom:12px;">📊</div>
+              <div style="font-family:Rajdhani,sans-serif;font-size:22px;color:#4a7a99;">Ajustá los parámetros y presioná ▶ CORRER BACKTEST</div>
+              <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#2a3a55;margin-top:6px;">Win Rate · Profit Factor · Drawdown · RR Ratio · Curva de capital</div>
+            </div>""", unsafe_allow_html=True)
+
+# ================================================================
+# TAB: SIMULACIÓN
+# ================================================================
+with tab_sim:
+    st.markdown('<div class="sec">🔮 SIMULACIÓN DE ESCENARIOS — ÚLTIMAS N SEÑALES</div>', unsafe_allow_html=True)
+
+    sim_c1, sim_c2 = st.columns([1, 2])
+    with sim_c1:
+        sim_act = st.selectbox("Activo", list(ACTIVOS.keys()), key="sim_act")
+        sim_iv  = st.selectbox("Intervalo", ["5m","15m","1h","4h"], index=2, key="sim_iv")
+        sim_n   = st.slider("Últimas N señales a simular", 5, 30, 15, key="sim_n")
+        sim_cap = st.number_input("Capital simulado $", 50.0, 10000.0, value=float(st.session_state.capital), step=10.0, key="sim_cap")
+        sim_rsk = st.slider("Riesgo %", 0.5, 5.0, 1.0, step=0.5, key="sim_rsk")
+        btn_sim = st.button("🔮 SIMULAR AHORA", key="sim_run", use_container_width=True)
+
+    with sim_c2:
+        if btn_sim:
+            with st.spinner("Simulando..."):
+                _t_sim = ACTIVOS[sim_act]["yahoo"]
+                _d_sim = obtener_datos(_t_sim, period="60d", interval=sim_iv)
+                if _d_sim is None or len(_d_sim) < 40:
+                    st.error("Sin datos para simular.")
+                else:
+                    _dq_sim = calc_qqe_engine(_d_sim)
+                    _sr     = run_backtest_v11(_dq_sim, sim_cap, sim_rsk)
+                    st.session_state["sim_result_v11"] = _sr
+                    st.session_state["sim_n_v11"]      = sim_n
+                    st.session_state["sim_cap_v11"]    = sim_cap
+
+        if "sim_result_v11" in st.session_state:
+            _sr2     = st.session_state["sim_result_v11"]
+            _n2      = st.session_state.get("sim_n_v11", 15)
+            _cap2    = st.session_state.get("sim_cap_v11", sim_cap)
+            _all_t   = _sr2.get("trades", [])
+            _trades2 = _all_t[-_n2:] if len(_all_t) >= _n2 else _all_t
+
+            if not _trades2:
+                st.warning("Sin señales en el período seleccionado.")
+            else:
+                _sw2   = [t for t in _trades2 if t["resultado"]=="WIN"]
+                _sl2   = [t for t in _trades2 if t["resultado"]=="LOSS"]
+                _sg2   = sum(t["ganancia"] for t in _trades2)
+                _swr2  = len(_sw2)/len(_trades2)*100
+                _swr_c = "#22c55e" if _swr2>=55 else ("#f0b429" if _swr2>=45 else "#ef4444")
+                _sg_c  = "#22c55e" if _sg2>=0 else "#ef4444"
+
+                sa,sb,sc2,sd = st.columns(4)
+                with sa: _kpi_v11("TRADES SIM", str(len(_trades2)), f"últimas {_n2}", "#c8d8e8")
+                with sb: _kpi_v11("WIN RATE", f"{_swr2:.1f}%", f"{len(_sw2)}W/{len(_sl2)}L", _swr_c)
+                with sc2: _kpi_v11("GANANCIA", f"${_sg2:+.2f}", f"desde ${_cap2:.0f}", _sg_c)
+                with sd: _kpi_v11("CAPITAL FINAL", f"${_cap2+_sg2:.2f}", "hipotético", _sg_c)
+
+                st.markdown('<div class="sec">OPERACIONES DE LA SIMULACIÓN</div>', unsafe_allow_html=True)
+                for _t2 in reversed(_trades2):
+                    _ct2 = "#22c55e" if _t2["resultado"]=="WIN" else "#ef4444"
+                    _it2 = "🔺" if _t2["senal"]=="BUY" else "🔻"
+                    st.markdown(f"""<div style="display:flex;justify-content:space-between;align-items:center;
+                         background:#0a1020;border-left:3px solid {_ct2};border-radius:6px;
+                         padding:10px 14px;margin-bottom:6px;flex-wrap:wrap;gap:8px;">
+                      <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#4a7a99;">{_t2['fecha']}</div>
+                      <div style="font-family:Rajdhani,sans-serif;font-size:16px;font-weight:700;color:{_ct2};">{_it2} {_t2['senal']}</div>
+                      <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#c8d8e8;">RSI {_t2['rsi']}</div>
+                      <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#c8d8e8;">{_t2['entrada']:.5f} → {_t2['salida']:.5f}</div>
+                      <div style="font-family:Rajdhani,sans-serif;font-size:18px;font-weight:700;color:{_ct2};">{_t2['ganancia']:+.2f}$</div>
+                      <div style="font-family:Share Tech Mono,monospace;font-size:11px;font-weight:700;
+                           background:{'rgba(34,197,94,0.15)' if _t2['resultado']=='WIN' else 'rgba(239,68,68,0.15)'};
+                           color:{_ct2};padding:3px 10px;border-radius:10px;">{_t2['resultado']}</div>
+                    </div>""", unsafe_allow_html=True)
+
+                _cap_c2 = [_cap2]
+                for _t2 in _trades2:
+                    _cap_c2.append(_cap_c2[-1] + _t2["ganancia"])
+                st.markdown('<div class="sec">CURVA DE CAPITAL SIMULADA</div>', unsafe_allow_html=True)
+                st.line_chart(pd.DataFrame({"Capital": _cap_c2}), color="#f0b429")
+        else:
+            st.markdown("""<div style="text-align:center;padding:60px;background:#0a1020;border:2px dashed #1a2a45;border-radius:14px;">
+              <div style="font-size:48px;margin-bottom:12px;">🔮</div>
+              <div style="font-family:Rajdhani,sans-serif;font-size:22px;color:#4a7a99;">Configurá el escenario y presioná SIMULAR</div>
+            </div>""", unsafe_allow_html=True)
+
+# ================================================================
+# TAB: EDUCATIVO
+# ================================================================
+with tab_educativo:
+    st.markdown('<div class="sec">📚 PANEL EDUCATIVO — QQE Y ESTRATEGIA</div>', unsafe_allow_html=True)
+    edu_t = st.tabs(["QQE", "SEÑALES", "GESTIÓN", "PSICOLOGÍA", "SESIONES ARG"])
+
+    with edu_t[0]:
+        st.markdown("""<div style="background:#0a1020;border:1px solid #1a2a45;border-left:4px solid #f0b429;border-radius:12px;padding:18px;margin-bottom:12px;">
+          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#f0b429;letter-spacing:2px;margin-bottom:12px;">QUE ES EL QQE</div>
+          <div style="font-size:14px;line-height:1.9;color:#c8d8e8;">
+            El <b style="color:#f0b429;">QQE (Quantitative Qualitative Estimation)</b> es un indicador de momentum
+            derivado del RSI. Aplica suavizado exponencial y calcula bandas dinámicas basadas en el ATR del propio RSI.<br><br>
+            <b style="color:#22c55e;">PROCESO:</b><br>
+            1. RSI(close, N) — RSI base<br>
+            2. EMA(RSI, SF) — RSI suavizado<br>
+            3. ATR del RSI suavizado × QQE Factor — Banda dinámica<br>
+            4. Cruce del RSI suavizado con la banda — SEÑAL<br><br>
+            <b style="color:#60a5fa;">VENTAJA vs RSI clásico:</b> Las señales son menos ruidosas
+            porque la banda se ajusta a la volatilidad actual del indicador, no a un valor fijo.
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div style="background:#030710;border:1px solid #1a2a45;border-radius:10px;padding:14px;">
+            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#f0b429;margin-bottom:8px;">RSI PERIOD (14)</div>
+            <div style="font-size:13px;color:#c8d8e8;line-height:1.7;">Período base del RSI. Menor = más señales pero más ruido. Para scalping M1 usar 9-14.</div>
+          </div>
+          <div style="background:#030710;border:1px solid #1a2a45;border-radius:10px;padding:14px;">
+            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#f0b429;margin-bottom:8px;">SMOOTHING FACTOR (5)</div>
+            <div style="font-size:13px;color:#c8d8e8;line-height:1.7;">Suaviza el RSI. Mayor SF = señales más tardías pero más limpias. Scalping: 3-5.</div>
+          </div>
+          <div style="background:#030710;border:1px solid #1a2a45;border-radius:10px;padding:14px;">
+            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#f0b429;margin-bottom:8px;">QQE FACTOR (4.238)</div>
+            <div style="font-size:13px;color:#c8d8e8;line-height:1.7;">Multiplica el ATR de la banda. Mayor = bandas más anchas, menos señales, mayor calidad.</div>
+          </div>
+          <div style="background:#030710;border:1px solid #1a2a45;border-radius:10px;padding:14px;">
+            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#f0b429;margin-bottom:8px;">RSI THRESHOLD (3.0)</div>
+            <div style="font-size:13px;color:#c8d8e8;line-height:1.7;">Define zona de alta calidad. Señales alejadas del 50 se marcan como ALTA.</div>
+          </div>
+        </div>""", unsafe_allow_html=True)
+
+    with edu_t[1]:
+        st.markdown("""<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div style="background:linear-gradient(135deg,#001508,#0a1020);border:1px solid #22c55e;border-radius:12px;padding:18px;">
+            <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#22c55e;margin-bottom:10px;">SEÑAL CALL (BUY)</div>
+            <div style="font-size:13px;color:#c8d8e8;line-height:1.8;">
+              RSI suavizado cruza ARRIBA la banda inferior<br>
+              Tendencia QQE cambia de -1 a +1<br>
+              RSI suavizado supera los 50 puntos<br><br>
+              <b style="color:#22c55e;">ALTA CALIDAD:</b> RSI estaba debajo de 50 y cruza con momentum creciente.
+            </div>
+          </div>
+          <div style="background:linear-gradient(135deg,#150000,#0a1020);border:1px solid #ef4444;border-radius:12px;padding:18px;">
+            <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#ef4444;margin-bottom:10px;">SEÑAL PUT (SELL)</div>
+            <div style="font-size:13px;color:#c8d8e8;line-height:1.8;">
+              RSI suavizado cruza ABAJO la banda superior<br>
+              Tendencia QQE cambia de +1 a -1<br>
+              RSI suavizado cae debajo de 50 puntos<br><br>
+              <b style="color:#ef4444;">FILTRO EXTRA:</b> Confirmar vela bajista y volumen no anormalmente bajo.
+            </div>
+          </div>
+        </div>""", unsafe_allow_html=True)
+
+    with edu_t[2]:
+        st.markdown("""<div style="background:#0a1020;border:1px solid #1a2a45;border-left:4px solid #f0b429;border-radius:12px;padding:18px;">
+          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#f0b429;margin-bottom:12px;">GESTIÓN DE CAPITAL</div>
+          <div style="font-size:13px;line-height:1.9;color:#c8d8e8;">
+            <b style="color:#f0b429;">Regla del 1%:</b> No arriesgar más del 1% del capital por operación.<br>
+            Con $500 → máximo $5 por operación.<br><br>
+            <b style="color:#f0b429;">Stop diario:</b> 2 pérdidas seguidas = parar el día.<br><br>
+            <b style="color:#f0b429;">Profit Factor mínimo:</b> Solo operar sistemas con PF &gt; 1.3<br><br>
+            <b style="color:#22c55e;">Fórmula posición:</b><br>
+            <code style="background:#030710;padding:4px 10px;border-radius:4px;color:#60a5fa;font-size:12px;">
+            monto = capital × riesgo% / 100
+            </code>
+          </div>
+        </div>""", unsafe_allow_html=True)
+
+    with edu_t[3]:
+        st.markdown("""<div style="background:#0a1020;border:1px solid #1a2a45;border-left:4px solid #60a5fa;border-radius:12px;padding:18px;">
+          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#60a5fa;margin-bottom:12px;">PSICOLOGÍA DEL TRADING</div>
+          <div style="font-size:13px;line-height:1.9;color:#c8d8e8;">
+            <b style="color:#ef4444;">Revenge trading:</b> Doblar apuesta tras perder para recuperar.<br>
+            El sistema no cambia porque vos perdiste.<br><br>
+            <b style="color:#ef4444;">FOMO:</b> Entrar tarde a una señal que ya corrió.<br>
+            Si perdiste la entrada, esperar la próxima.<br><br>
+            <b style="color:#ef4444;">Over-trading:</b> Operar sin señal clara por aburrimiento.<br>
+            WAIT en el semáforo = esperar, sin excepciones.<br><br>
+            <b style="color:#22c55e;">Regla mental:</b> Cada operación es independiente. El edge está en el volumen, no en cada trade individual.
+          </div>
+        </div>""", unsafe_allow_html=True)
+
+    with edu_t[4]:
+        st.markdown("""<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div style="background:#030710;border-left:3px solid #22c55e;border-radius:8px;padding:14px;">
+            <b style="color:#22c55e;">LONDRÉS 04:00–07:00 ARG</b><br>
+            <div style="font-size:13px;color:#c8d8e8;margin-top:6px;">Mayor liquidez EUR/GBP. Movimientos limpios.<br><span style="color:#4a7a99;">Mejor: EUR/USD, GBP/USD</span></div>
+          </div>
+          <div style="background:#030710;border-left:3px solid #22c55e;border-radius:8px;padding:14px;">
+            <b style="color:#22c55e;">NUEVA YORK 10:00–13:00 ARG</b><br>
+            <div style="font-size:13px;color:#c8d8e8;margin-top:6px;">Alta volatilidad. Solapamiento con Londres.<br><span style="color:#4a7a99;">Mejor: todos los pares mayores</span></div>
+          </div>
+          <div style="background:#030710;border-left:3px solid #f0b429;border-radius:8px;padding:14px;">
+            <b style="color:#f0b429;">SOLAPAMIENTO 07:00–10:00 ARG</b><br>
+            <div style="font-size:13px;color:#c8d8e8;margin-top:6px;">Máxima actividad y spreads bajos.<br><span style="color:#4a7a99;">Optimo para scalping</span></div>
+          </div>
+          <div style="background:#030710;border-left:3px solid #ef4444;border-radius:8px;padding:14px;">
+            <b style="color:#ef4444;">ASIÁTICA 21:00–04:00 ARG</b><br>
+            <div style="font-size:13px;color:#c8d8e8;margin-top:6px;">Baja volatilidad. Muchas señales falsas.<br><span style="color:#4a7a99;">EVITAR operaciones</span></div>
+          </div>
+        </div>""", unsafe_allow_html=True)
+
+# ================================================================
+# TAB: MEJORAS
+# ================================================================
+with tab_mejoras:
+    st.markdown('<div class="sec">🔧 10 MEJORAS RECOMENDADAS PARA TU SISTEMA</div>', unsafe_allow_html=True)
+    _mejoras = [
+        ("01","#22c55e","Confirmación Multi-Timeframe",
+         "Validar señal QQE en M1 con tendencia en H1 y H4. Solo operar cuando los 3 coinciden. Reduce señales pero sube win rate al 60-70%.",
+         "En Backtesting comparar resultados con/sin filtro H1. Diferencia típica: +10-15% win rate."),
+        ("02","#f0b429","Filtro de Volatilidad ATR",
+         "Calcular ATR de últimas 14 velas. Solo operar cuando ATR está en rango normal. Ni mercado dormido ni noticias violentas.",
+         "ATR óptimo EUR/USD M1: 0.0003–0.0012. Evitar ATR < 0.0002."),
+        ("03","#60a5fa","Gestión Dinámica del Capital",
+         "Reducir tamaño de posición tras 2 pérdidas seguidas. Aumentar gradualmente en rachas ganadoras (Kelly modificado).",
+         "Factor: 0.5x tras 2 pérdidas, 1.0x normal, 1.5x tras 3 ganancias."),
+        ("04","#a78bfa","Alertas con Contexto Completo",
+         'Las alertas de Telegram deben incluir: señal, par, timeframe, RSI, fuerza de señal, sesión activa y tendencia H1.',
+         '"CALL EUR/USD M5 | RSI 58.3 | Fuerza 74% | Sesión NY | H1 ALCISTA"'),
+        ("05","#fb923c","Backtest con Costos Reales",
+         "En binarias el payout es fijo (80-92%), no precio libre. WIN = +monto×payout%, LOSS = -monto×100%. Cambia completamente las stats.",
+         "Modificar run_backtest_v11 con parámetro payout=0.85 para simular IQ Option real."),
+        ("06","#34d399","Estadísticas por Horario",
+         "Segmentar resultados del backtest por sesión de mercado. Identificar en qué horas el QQE funciona mejor para cada par.",
+         "Agregar columna sesion en backtest y groupby para ver WR por sesión."),
+        ("07","#f472b6","Señales Automáticas",
+         "Conectar el dashboard a la API de IQ Option (iqoptionapi) para ejecutar automáticamente las señales cuando cumplen todos los filtros.",
+         "Solo recomendado con backtesting extenso y supervisión constante."),
+        ("08","#38bdf8","Explicación IA de cada Señal",
+         "Integrar Claude/GPT para que explique en lenguaje natural por qué se generó cada señal, qué factores la respaldan y el riesgo.",
+         "Ya tenés la API de Anthropic en el tab NOTICIAS+IA. Reutilizarla para analizar señales QQE."),
+        ("09","#fbbf24","Optimización Automática de Parámetros",
+         "Iterar sobre rangos de RSI period, SF y QQE Factor para encontrar la combinación con mayor Profit Factor en cada par.",
+         "Grid search: rsi [9,14,21] × sf [3,5,8] × qf [3,4.238,6] = 27 combinaciones. Seleccionar PF > 1.5."),
+        ("10","#c084fc","Diario de Trading Integrado",
+         "Ya tenés el tab DIARIO. Agregar campo de emoción al operar y analizar si las pérdidas correlacionan con estados emocionales.",
+         "Revisar semanalmente. Las pérdidas en revenge trading son identificables por el horario (fuera de sesión óptima)."),
+    ]
+    for _n, _col, _tit, _desc, _impl in _mejoras:
+        st.markdown(f"""<div style="background:#0a1020;border:1px solid #1a2a45;border-left:4px solid {_col};
+             border-radius:12px;padding:18px;margin-bottom:10px;">
+          <div style="display:flex;align-items:flex-start;gap:16px;">
+            <div style="font-family:'Rajdhani',sans-serif;font-weight:900;font-size:32px;color:{_col};opacity:0.5;min-width:48px;">{_n}</div>
+            <div>
+              <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:18px;color:{_col};margin-bottom:6px;">{_tit}</div>
+              <div style="font-size:13px;color:#c8d8e8;line-height:1.8;margin-bottom:8px;">{_desc}</div>
+              <div style="font-size:12px;font-family:'Share Tech Mono',monospace;color:#4a7a99;background:#030710;border-radius:6px;padding:8px 12px;">
+                Implementacion: {_impl}
+              </div>
+            </div>
+          </div>
+        </div>""", unsafe_allow_html=True)
 
 # ================================================================
 # FOOTER
