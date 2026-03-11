@@ -361,37 +361,71 @@ def es_horario_aceptable():
     return (7 <= h < 16)
 
 def _build_filtros_html(r):
-    """Construye el HTML de los 5 filtros sin f-strings anidados (evita SyntaxError)."""
+    """5 filtros grandes — sin f-strings anidados."""
     labels = ["EMA 5/13/50", "MACD HIST", "RSI ZONA", "VELA", "VOLUMEN"]
     parts = []
     for i, lbl in enumerate(labels):
-        ok      = r.get(f"f{i+1}", False)
-        border  = "#16a34a" if ok else "#dc2626"
-        color   = "#4ade80" if ok else "#dc2626"
-        symbol  = "✓" if ok else "✗"
+        ok     = r.get(f"f{i+1}", False)
+        bc     = "#16a34a" if ok else "#dc2626"
+        col    = "#4ade80" if ok else "#dc2626"
+        sym    = "✓" if ok else "✗"
         parts.append(
-            f'<div style="background:#060c18;border:1px solid {border};border-radius:8px;'
+            f'<div style="background:#060c18;border:1px solid {bc};border-radius:8px;'
             f'padding:10px;text-align:center;">'
             f'<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">{lbl}</div>'
-            f'<div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:20px;color:{color};">{symbol}</div>'
+            f'<div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:20px;color:{col};">{sym}</div>'
             f'</div>'
         )
     return "".join(parts)
 
-def _build_filtros_mini_html(r):
-    """Versión compacta (4 filtros) para la tarjeta de avisos 3/4."""
+def _build_filtros_mini(r):
+    """4 filtros compactos para avisos."""
     parts = []
     for j in range(4):
-        ok     = r.get(f"f{j+1}", False)
-        border = "#16a34a" if ok else "#374151"
-        color  = "#4ade80" if ok else "#64748b"
-        symbol = "✓" if ok else "✗"
+        ok  = r.get(f"f{j+1}", False)
+        bc  = "#16a34a" if ok else "#374151"
+        col = "#4ade80" if ok else "#64748b"
+        sym = "✓" if ok else "✗"
         parts.append(
-            f'<div style="background:#060c18;border:1px solid {border};border-radius:4px;'
+            f'<div style="background:#060c18;border:1px solid {bc};border-radius:4px;'
             f'padding:5px;text-align:center;font-family:Rajdhani,sans-serif;'
-            f'font-weight:700;font-size:14px;color:{color};">{symbol}</div>'
+            f'font-weight:700;font-size:14px;color:{col};">{sym}</div>'
         )
     return "".join(parts)
+
+def _play_audio(sound_type, audio_on):
+    """Reproduce audio via components_v1.html — unico metodo que ejecuta JS en Streamlit."""
+    if not COMPONENTS_OK or not audio_on or sound_type == "none":
+        return
+    ao = "true" if audio_on else "false"
+    html_audio = f"""<script>
+(function() {{
+  var _on = {ao};
+  var _t  = "{sound_type}";
+  if (!_on || !_t || _t === 'none') return;
+  try {{
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
+    var now = ctx.currentTime;
+    function nota(f, w, d, tp, v) {{
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = tp || 'sine'; o.frequency.setValueAtTime(f, now+w);
+      g.gain.setValueAtTime(v||0.3, now+w);
+      g.gain.exponentialRampToValueAtTime(0.001, now+w+d);
+      o.start(now+w); o.stop(now+w+d+0.05);
+    }}
+    if (_t==='signal_call')  {{ nota(440,.00,.12,'sine',.35); nota(554,.13,.12,'sine',.35); nota(659,.26,.20,'sine',.40); nota(880,.48,.18,'sine',.25); }}
+    else if (_t==='signal_put')   {{ nota(659,.00,.12,'sine',.35); nota(554,.13,.12,'sine',.35); nota(440,.26,.20,'sine',.40); nota(330,.48,.18,'sine',.25); }}
+    else if (_t==='signal')       {{ nota(880,.00,.10,'sine',.30); nota(1047,.12,.15,'sine',.30); }}
+    else if (_t==='loss_warning') {{ nota(200,.00,.18,'square',.28); nota(150,.20,.18,'square',.28); nota(200,.40,.18,'square',.28); }}
+    else if (_t==='session_open') {{ nota(523,.00,.10,'triangle',.30); nota(659,.12,.10,'triangle',.30); nota(784,.24,.10,'triangle',.30); nota(1047,.36,.22,'triangle',.35); }}
+    else if (_t==='stop_hit')     {{ nota(300,.00,.10,'sawtooth',.38); nota(150,.12,.10,'sawtooth',.38); nota(300,.25,.10,'sawtooth',.38); nota(150,.37,.10,'sawtooth',.38); nota(100,.50,.30,'sawtooth',.30); }}
+    else {{ nota(880,.00,.12,'sine',.28); }}
+  }} catch(e) {{ console.warn('QQE audio:', e); }}
+}})();
+</script>"""
+    components_v1.html(html_audio, height=0, scrolling=False)
 
 @st.cache_data(ttl=300)
 def get_tendencia_h1(symbol):
@@ -640,6 +674,7 @@ with st.sidebar:
     pct_used = min(100, int(perdida / sl_monto * 100)) if sl_monto > 0 else 0
     bar_col  = "#4ade80" if pct_used < 50 else ("#fbbf24" if pct_used < 80 else "#f87171")
     racha    = st.session_state.get("racha_losses", 0)
+    _racha_txt = "🟢 0" if racha==0 else ("🟡 1 - CUIDADO" if racha==1 else f"🔴 {racha} - PARAR")
     racha_col = "#4ade80" if racha == 0 else ("#fbbf24" if racha == 1 else "#f87171")
     st.markdown(f"""
     <div style="background:#0d1525;border:1px solid #1e3050;border-radius:8px;padding:12px;margin-bottom:8px;">
@@ -655,7 +690,7 @@ with st.sidebar:
       <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:{bar_col};margin-top:3px;">Pérdida: ${perdida:.2f} / SL: ${sl_monto:.2f}</div>
       <div style="display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid #1e3050;">
         <span style="font-family:Share Tech Mono,monospace;font-size:11px;color:#4a7a99;">RACHA LOSSES</span>
-        <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:17px;color:{racha_col};">{'🟢 0' if racha==0 else '🟡 1 — CUIDADO' if racha==1 else '🔴 '+str(racha)+' — PARAR'}</span>
+        <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:17px;color:{racha_col};">{_racha_txt}</span>
       </div>
     </div>""", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
@@ -707,6 +742,7 @@ ses_nom, ses_est, ses_col, ses_bg, ses_border = get_session_info()
 hora_arg_now = datetime.now(TZ_ARG).strftime("%H:%M")
 _, cp, np_ = calc_pnl()
 racha_actual = st.session_state.get("racha_losses", 0)
+_racha_hdr = "✓ 0" if racha_actual==0 else (f"⚠ {racha_actual}" if racha_actual==1 else f"🛑 {racha_actual}")
 capital_hoy  = st.session_state.capital
 
 if ses_est == "OPERAR":
@@ -750,7 +786,7 @@ st.markdown(f"""
   </div>
   <div style="text-align:center;">
     <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;">RACHA</div>
-    <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:26px;color:{racha_col};">{"✓ 0" if racha_actual==0 else f"⚠ {racha_actual}" if racha_actual==1 else f"🛑 {racha_actual}"}</div>
+    <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:26px;color:{racha_col};">{_racha_hdr}</div>
   </div>
   <div style="text-align:center;">
     <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#4a7a99;letter-spacing:2px;">ENTRADA 1%</div>
@@ -790,68 +826,6 @@ with _c2:
     if st.button("🔊 Test", key="btn_snd_test"):
         st.session_state["_play_sound"] = "signal"
 
-def play_audio_component(sound_type: str, audio_on: bool):
-    """Reproduce audio via components_v1.html — único método que ejecuta JS en Streamlit."""
-    if not COMPONENTS_OK or not audio_on or sound_type == "none":
-        return
-    ao = "true" if audio_on else "false"
-    html_audio = f"""
-<script>
-(function() {{
-  var _on = {ao};
-  var _t  = "{sound_type}";
-  if (!_on || !_t || _t === 'none') return;
-  try {{
-    var ctx = new (window.AudioContext || window.webkitAudioContext)();
-    // Desbloquear contexto si está suspendido (política de autoplay del browser)
-    if (ctx.state === 'suspended') {{ ctx.resume(); }}
-    var now = ctx.currentTime;
-    function nota(freq, start, dur, type, vol) {{
-      var o = ctx.createOscillator();
-      var g = ctx.createGain();
-      o.connect(g); g.connect(ctx.destination);
-      o.type = type || 'sine';
-      o.frequency.setValueAtTime(freq, now + start);
-      g.gain.setValueAtTime(vol || 0.35, now + start);
-      g.gain.exponentialRampToValueAtTime(0.001, now + start + dur);
-      o.start(now + start);
-      o.stop(now + start + dur + 0.05);
-    }}
-    if (_t === 'signal_call') {{
-      nota(440,  0.00, 0.12, 'sine', 0.35);
-      nota(554,  0.13, 0.12, 'sine', 0.35);
-      nota(659,  0.26, 0.20, 'sine', 0.40);
-      nota(880,  0.48, 0.18, 'sine', 0.25);
-    }} else if (_t === 'signal_put') {{
-      nota(659,  0.00, 0.12, 'sine', 0.35);
-      nota(554,  0.13, 0.12, 'sine', 0.35);
-      nota(440,  0.26, 0.20, 'sine', 0.40);
-      nota(330,  0.48, 0.18, 'sine', 0.25);
-    }} else if (_t === 'signal') {{
-      nota(880,  0.00, 0.10, 'sine', 0.30);
-      nota(1047, 0.12, 0.15, 'sine', 0.30);
-    }} else if (_t === 'loss_warning') {{
-      nota(200, 0.00, 0.18, 'square', 0.28);
-      nota(150, 0.20, 0.18, 'square', 0.28);
-      nota(200, 0.40, 0.18, 'square', 0.28);
-    }} else if (_t === 'session_open') {{
-      nota(523,  0.00, 0.10, 'triangle', 0.30);
-      nota(659,  0.12, 0.10, 'triangle', 0.30);
-      nota(784,  0.24, 0.10, 'triangle', 0.30);
-      nota(1047, 0.36, 0.22, 'triangle', 0.35);
-    }} else if (_t === 'stop_hit') {{
-      nota(300, 0.00, 0.10, 'sawtooth', 0.38);
-      nota(150, 0.12, 0.10, 'sawtooth', 0.38);
-      nota(300, 0.25, 0.10, 'sawtooth', 0.38);
-      nota(150, 0.37, 0.10, 'sawtooth', 0.38);
-      nota(100, 0.50, 0.30, 'sawtooth', 0.30);
-    }}
-  }} catch(e) {{ console.warn('QQE audio error:', e); }}
-}})();
-</script>
-"""
-    components_v1.html(html_audio, height=0, scrolling=False)
-
 _snd = st.session_state.pop("_play_sound", "none")
 if racha_actual >= 2 and st.session_state.get("_racha_alerted",0) != racha_actual:
     _snd = "stop_hit"; st.session_state["_racha_alerted"] = racha_actual
@@ -860,8 +834,7 @@ if _h_utc in (7,13) and _min_utc == 0:
     _ses_key = f"_ses_alerted_{_h_utc}"
     if not st.session_state.get(_ses_key,False):
         _snd = "session_open"; st.session_state[_ses_key] = True
-
-play_audio_component(_snd, st.session_state.audio_on)
+_play_audio(_snd, st.session_state.audio_on)
 
 
 
@@ -961,6 +934,7 @@ with tab_scan1:
             col_dir = "#4ade80" if es_call else "#f87171"
             conf = m["conf"]
             conf_bar = f'<div class="prog-track"><div class="prog-fill" style="width:{conf}%;background:{"#4ade80" if conf>=80 else "#c8920a" if conf>=65 else "#64748b"};"></div></div>'
+            _rsi_col = "#f87171" if r["rsi"] > 70 else ("#4ade80" if r["rsi"] < 30 else "#c8d8e8")
 
             st.markdown(f"""
             <div class="{card_cls}">
@@ -982,7 +956,7 @@ with tab_scan1:
                 </div>
                 <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
                   <div style="font-family:Share Tech Mono,monospace;font-size:8px;color:#4a7a99;">RSI</div>
-                  <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:14px;color:{'#f87171' if r['rsi']>70 else '#4ade80' if r['rsi']<30 else '#c8d8e8'};">{r['rsi']:.1f}</div>
+                  <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:14px;color:{_rsi_col};">{r['rsi']:.1f}</div>
                 </div>
                 <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
                   <div style="font-family:Share Tech Mono,monospace;font-size:8px;color:#4a7a99;">ENTRADA 1%</div>
@@ -1620,14 +1594,16 @@ with tab_triple:
         ultimo_t = st.session_state.get("triple_ultimo", "")
         completos_t = [r for r in res_t if r["filtros"] == 4]
         avisos_t    = [r for r in res_t if r["filtros"] == 3]
+        _kc1 = "#4ade80" if completos_t else "#4a7a99"
+        _kc2 = "#ff9800" if avisos_t else "#4a7a99"
 
         # KPIs
         st.markdown(f"""
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
           <div class="kpi"><div class="kpi-label">ÚLTIMO SCAN</div><div class="kpi-value" style="font-size:20px;color:#4a7a99;">{ultimo_t}</div></div>
           <div class="kpi"><div class="kpi-label">ACTIVOS</div><div class="kpi-value" style="color:#60a5fa;">{len(res_t)}</div></div>
-          <div class="kpi"><div class="kpi-label">✅ 4/4 ENTRAR</div><div class="kpi-value" style="color:{'#4ade80' if completos_t else '#4a7a99'};">{len(completos_t)}</div></div>
-          <div class="kpi"><div class="kpi-label">⚠ 3/4 ESPERAR</div><div class="kpi-value" style="color:{'#ff9800' if avisos_t else '#4a7a99'};">{len(avisos_t)}</div></div>
+          <div class="kpi"><div class="kpi-label">ENTRAR 4/4</div><div class="kpi-value" style="color:{_kc1};">{len(completos_t)}</div></div>
+          <div class="kpi"><div class="kpi-label">ESPERAR 3/4</div><div class="kpi-value" style="color:{_kc2};">{len(avisos_t)}</div></div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1653,54 +1629,61 @@ with tab_triple:
                     calidad_label = '<span style="background:#c8920a;color:#000;padding:3px 10px;border-radius:6px;font-family:Share Tech Mono,monospace;font-size:10px;margin-left:8px;">⚠ CONTRA H1</span>'
                 else:
                     calidad_label = ''
-                st.markdown(f"""
-                <div style="background:linear-gradient(135deg,{'#041a0c' if es_call else '#1a0404'} 0%,#0d1525 100%);
-                     border:2px solid {borde_col};border-radius:14px;padding:18px 22px;margin-bottom:12px;">
-                  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
-                    <div>
-                      <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:32px;color:#c8d8e8;">{r['activo']}</span>
-                      <span style="font-family:Share Tech Mono,monospace;font-size:11px;color:{tipo_col};margin-left:12px;">{tipo_lbl}</span>
-                      {calidad_label}
-                    </div>
-                    <div style="display:flex;align-items:center;gap:16px;">
-                      <div style="text-align:center;">
-                        <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:42px;color:{col_d};line-height:1;">{ic} {r['direccion']}</div>
-                        <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:{col_d};">{'⚡ ENTRAR AHORA' if not contra else '⚠ REVISAR — CONTRA H1'}</div>
-                      </div>
-                      <div style="text-align:center;background:#060c18;border:1px solid {borde_col};border-radius:10px;padding:10px 16px;">
-                        <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:32px;color:{col_d};">{r['filtros']}/5</div>
-                        <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">FILTROS</div>
-                      </div>
-                    </div>
-                  </div>
-                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
-                    {_build_filtros_html(r)}
-                  </div>
-                  <!-- H1 Confluencia + métricas -->
-                  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">
-                    <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
-                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">PRECIO</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8d8e8;">{r['precio']:.5f}</div>
-                    </div>
-                    <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
-                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">RSI</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:{col_d};">{r['rsi']:.1f}</div>
-                    </div>
-                    <div style="background:#060c18;border:1px solid {'#16a34a' if alineado else '#c8920a' if contra else '#1e3050'};border-radius:6px;padding:8px;text-align:center;">
-                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">H1 TREND</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;color:{'#4ade80' if alineado else '#ff9800' if contra else '#94a3b8'};">{'✓ ' if alineado else '✗ '}{tend_h1}</div>
-                    </div>
-                    <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
-                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">CONFIANZA</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:{col_d};">{r['conf']}%</div>
-                    </div>
-                    <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
-                      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">ENTRADA 1%</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8920a;">${st.session_state.capital*0.01:.2f}</div>
-                    </div>
-                  </div>
-                  {'<div style="background:#0a3020;border:1px solid #16a34a;border-radius:6px;padding:8px;margin-top:8px;font-family:Share Tech Mono,monospace;font-size:12px;color:#4ade80;">⚡ SEÑAL COMPLETA + H1 ALINEADO — Máxima calidad. Entrar en próxima vela.</div>' if alineado and not contra else '<div style="background:#2a1a00;border:1px solid #ff9800;border-radius:6px;padding:8px;margin-top:8px;font-family:Share Tech Mono,monospace;font-size:12px;color:#fbbf24;">⚠ Señal técnica OK pero va contra tendencia H1. Reducir monto a 0.5% o esperar.</div>' if contra else '<div style="background:#0a2030;border:1px solid #60a5fa;border-radius:6px;padding:8px;margin-top:8px;font-family:Share Tech Mono,monospace;font-size:12px;color:#60a5fa;">📊 Señal completa. H1 lateral — válido, pero preferir activos con H1 alineado.</div>'}
-                </div>""", unsafe_allow_html=True)
+                # Pre-calcular todo — sin ternarios dentro del HTML
+                _bg        = "#041a0c" if es_call else "#1a0404"
+                _txt_ent   = "&#9889; ENTRAR AHORA" if not contra else "&#9888; REVISAR — CONTRA H1"
+                _h1_border = "#16a34a" if alineado else ("#c8920a" if contra else "#1e3050")
+                _h1_color  = "#4ade80" if alineado else ("#ff9800" if contra else "#94a3b8")
+                _h1_check  = "&#10003; " if alineado else "&#10007; "
+                _ent_1pct  = round(st.session_state.capital * 0.01, 2)
+                _filt_html = _build_filtros_html(r)
+                if alineado and not contra:
+                    _banner = '<div style="background:#0a3020;border:1px solid #16a34a;border-radius:6px;padding:8px;margin-top:8px;font-family:Share Tech Mono,monospace;font-size:12px;color:#4ade80;">&#9889; SEÑAL COMPLETA + H1 ALINEADO — Maxima calidad.</div>'
+                elif contra:
+                    _banner = '<div style="background:#2a1a00;border:1px solid #ff9800;border-radius:6px;padding:8px;margin-top:8px;font-family:Share Tech Mono,monospace;font-size:12px;color:#fbbf24;">&#9888; Señal OK pero contra H1. Reducir monto a 0.5%.</div>'
+                else:
+                    _banner = '<div style="background:#0a2030;border:1px solid #60a5fa;border-radius:6px;padding:8px;margin-top:8px;font-family:Share Tech Mono,monospace;font-size:12px;color:#60a5fa;">Señal completa. H1 lateral.</div>'
+                st.markdown(f"""<div style="background:linear-gradient(135deg,{_bg} 0%,#0d1525 100%);border:2px solid {borde_col};border-radius:14px;padding:18px 22px;margin-bottom:12px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+    <div><span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:32px;color:#c8d8e8;">{r['activo']}</span>
+    <span style="font-family:Share Tech Mono,monospace;font-size:11px;color:{tipo_col};margin-left:12px;">{tipo_lbl}</span>
+    {calidad_label}</div>
+    <div style="display:flex;align-items:center;gap:16px;">
+      <div style="text-align:center;">
+        <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:42px;color:{col_d};line-height:1;">{ic} {r['direccion']}</div>
+        <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:{col_d};">{_txt_ent}</div>
+      </div>
+      <div style="text-align:center;background:#060c18;border:1px solid {borde_col};border-radius:10px;padding:10px 16px;">
+        <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:32px;color:{col_d};">{r['filtros']}/5</div>
+        <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">FILTROS</div>
+      </div>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;">{_filt_html}</div>
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">
+    <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
+      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">PRECIO</div>
+      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8d8e8;">{r['precio']:.5f}</div>
+    </div>
+    <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
+      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">RSI</div>
+      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:{col_d};">{r['rsi']:.1f}</div>
+    </div>
+    <div style="background:#060c18;border:1px solid {_h1_border};border-radius:6px;padding:8px;text-align:center;">
+      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">H1 TREND</div>
+      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;color:{_h1_color};">{_h1_check}{tend_h1}</div>
+    </div>
+    <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
+      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">CONFIANZA</div>
+      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:{col_d};">{r['conf']}%</div>
+    </div>
+    <div style="background:#060c18;border-radius:6px;padding:8px;text-align:center;">
+      <div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;">ENTRADA 1%</div>
+      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;color:#c8920a;">${_ent_1pct:.2f}</div>
+    </div>
+  </div>
+  {_banner}
+</div>""", unsafe_allow_html=True)
 
                 # ── BOTÓN ENTRADA RÁPIDA ─────────────────────────────
                 _btn_col = "#22c55e" if es_call else "#ef4444"
@@ -1759,16 +1742,9 @@ with tab_triple:
                 col_d   = "#4ade80" if es_call else "#f87171"
                 ic      = "🔺" if es_call else "🔻"
                 with cols_av[i % 3]:
-                    st.markdown(f"""
-                    <div style="background:#0d1525;border:1px solid #ff9800;border-radius:10px;padding:14px;margin-bottom:10px;">
-                      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:20px;color:#c8d8e8;">{r['activo']}</div>
-                      <div style="font-family:Rajdhani,sans-serif;font-size:22px;color:{col_d};font-weight:700;">{ic} {r['direccion']}</div>
-                      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;margin:8px 0;">
-                        {_build_filtros_mini_html(r)}
-                      </div>
-                      <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#94a3b8;">RSI {r['rsi']:.1f} · ${st.session_state.capital*0.01:.2f}</div>
-                      <div style="background:#2a1a00;border-radius:4px;padding:6px;margin-top:6px;font-family:Share Tech Mono,monospace;font-size:11px;color:#fbbf24;">⚠ Esperar 4to filtro</div>
-                    </div>""", unsafe_allow_html=True)
+                    _fm   = _build_filtros_mini(r)
+                    _e1p  = round(st.session_state.capital * 0.01, 2)
+                    st.markdown(f'<div style="background:#0d1525;border:1px solid #ff9800;border-radius:10px;padding:14px;margin-bottom:10px;"><div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:20px;color:#c8d8e8;">{r["activo"]}</div><div style="font-family:Rajdhani,sans-serif;font-size:22px;color:{col_d};font-weight:700;">{ic} {r["direccion"]}</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;margin:8px 0;">{_fm}</div><div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#94a3b8;">RSI {r["rsi"]:.1f} &#183; ${_e1p:.2f}</div><div style="background:#2a1a00;border-radius:4px;padding:6px;margin-top:6px;font-family:Share Tech Mono,monospace;font-size:11px;color:#fbbf24;">&#9888; Esperar 4to filtro</div></div>', unsafe_allow_html=True)
 
         if not res_t:
             st.markdown('<div style="text-align:center;padding:40px;color:#4a7a99;font-family:Share Tech Mono,monospace;font-size:13px;">Sin señales. Mejor horario: 07-10 UTC (Londres) o 13-16 UTC (NY)</div>', unsafe_allow_html=True)
@@ -2042,6 +2018,7 @@ Be specific and realistic. Base analysis on what typically moves {noticias_activ
 
         tend_color = {"ALCISTA": "#4ade80", "BAJISTA": "#f87171", "NEUTRAL": "#94a3b8"}.get(an.get("tendencia",""), "#94a3b8")
         senal_color = {"CALL": "#4ade80", "PUT": "#f87171", "NO OPERAR": "#94a3b8"}.get(an.get("señal",""), "#94a3b8")
+        _ic_ia = '🔺' if an.get('señal')=='CALL' else ('🔻' if an.get('señal')=='PUT' else '⏸')
         senal_bg = {"CALL": "#041a0c", "PUT": "#1a0404", "NO OPERAR": "#0d1525"}.get(an.get("señal",""), "#0d1525")
         riesgo_color = {"LOW": "#4ade80", "MEDIUM": "#ff9800", "HIGH": "#f87171"}.get(an.get("riesgo",""), "#94a3b8")
 
@@ -2059,7 +2036,7 @@ Be specific and realistic. Base analysis on what typically moves {noticias_activ
             </div>
             <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
               <div style="text-align:center;background:#060c18;border:2px solid {senal_color};border-radius:12px;padding:14px 24px;">
-                <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:36px;color:{senal_color};">{'🔺' if an.get('señal')=='CALL' else '🔻' if an.get('señal')=='PUT' else '⏸'} {an.get('señal','')}</div>
+                <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:36px;color:{senal_color};">{_ic_ia} {an.get('señal','')}</div>
                 <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#4a7a99;">SEÑAL IA</div>
               </div>
               <div style="text-align:center;background:#060c18;border:1px solid #1e3050;border-radius:10px;padding:10px 16px;">
@@ -2239,12 +2216,13 @@ with tab_ops:
             pnl_c = "#4ade80" if o["pnl"]>0 else "#f87171"
             ic_r = "✅" if o["resultado"]=="WIN" else "❌"
             ic_d = "▲" if o["dir"]=="CALL" else "▼"
+            _col_dir = "#4ade80" if o["dir"]=="CALL" else "#f87171"
             st.markdown(f"""
             <div class="asset-row" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
               <div>
                 <span style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:16px;color:#c8d8e8;">{o['activo']}</span>
                 <span style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;margin-left:8px;">{o['tipo']}</span>
-                <span style="font-family:Share Tech Mono,monospace;font-size:10px;color:{'#4ade80' if o['dir']=='CALL' else '#f87171'};margin-left:8px;">{ic_d} {o['dir']}</span>
+                <span style="font-family:Share Tech Mono,monospace;font-size:10px;color:{_col_dir};margin-left:8px;">{ic_d} {o['dir']}</span>
               </div>
               <div style="display:flex;gap:14px;align-items:center;">
                 <span style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">{o['fecha']} {o['hora']}</span>
