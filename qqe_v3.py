@@ -360,6 +360,39 @@ def es_horario_aceptable():
     h = get_utc_hour()
     return (7 <= h < 16)
 
+def _build_filtros_html(r):
+    """Construye el HTML de los 5 filtros sin f-strings anidados (evita SyntaxError)."""
+    labels = ["EMA 5/13/50", "MACD HIST", "RSI ZONA", "VELA", "VOLUMEN"]
+    parts = []
+    for i, lbl in enumerate(labels):
+        ok      = r.get(f"f{i+1}", False)
+        border  = "#16a34a" if ok else "#dc2626"
+        color   = "#4ade80" if ok else "#dc2626"
+        symbol  = "✓" if ok else "✗"
+        parts.append(
+            f'<div style="background:#060c18;border:1px solid {border};border-radius:8px;'
+            f'padding:10px;text-align:center;">'
+            f'<div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">{lbl}</div>'
+            f'<div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:20px;color:{color};">{symbol}</div>'
+            f'</div>'
+        )
+    return "".join(parts)
+
+def _build_filtros_mini_html(r):
+    """Versión compacta (4 filtros) para la tarjeta de avisos 3/4."""
+    parts = []
+    for j in range(4):
+        ok     = r.get(f"f{j+1}", False)
+        border = "#16a34a" if ok else "#374151"
+        color  = "#4ade80" if ok else "#64748b"
+        symbol = "✓" if ok else "✗"
+        parts.append(
+            f'<div style="background:#060c18;border:1px solid {border};border-radius:4px;'
+            f'padding:5px;text-align:center;font-family:Rajdhani,sans-serif;'
+            f'font-weight:700;font-size:14px;color:{color};">{symbol}</div>'
+        )
+    return "".join(parts)
+
 @st.cache_data(ttl=300)
 def get_tendencia_h1(symbol):
     """Devuelve tendencia en H1 para confirmar señales 1min (confluencia)"""
@@ -757,51 +790,67 @@ with _c2:
     if st.button("🔊 Test", key="btn_snd_test"):
         st.session_state["_play_sound"] = "signal"
 
-SONIDOS_JS = """<script>
-var _qqe_on = {audio_on};
-var _tipo   = "{sound_type}";
-function qqePlay(t) {{
-  if (!_qqe_on) return;
+def play_audio_component(sound_type: str, audio_on: bool):
+    """Reproduce audio via components_v1.html — único método que ejecuta JS en Streamlit."""
+    if not COMPONENTS_OK or not audio_on or sound_type == "none":
+        return
+    ao = "true" if audio_on else "false"
+    html_audio = f"""
+<script>
+(function() {{
+  var _on = {ao};
+  var _t  = "{sound_type}";
+  if (!_on || !_t || _t === 'none') return;
   try {{
     var ctx = new (window.AudioContext || window.webkitAudioContext)();
-    var osc = ctx.createOscillator();
-    var g   = ctx.createGain();
-    osc.connect(g); g.connect(ctx.destination);
+    // Desbloquear contexto si está suspendido (política de autoplay del browser)
+    if (ctx.state === 'suspended') {{ ctx.resume(); }}
     var now = ctx.currentTime;
-    if (t==='signal_call') {{
-      osc.type='sine';
-      osc.frequency.setValueAtTime(440,now); osc.frequency.setValueAtTime(554,now+0.14); osc.frequency.setValueAtTime(659,now+0.28);
-      g.gain.setValueAtTime(0.4,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.55);
-      osc.start(now); osc.stop(now+0.55);
-    }} else if (t==='signal_put') {{
-      osc.type='sine';
-      osc.frequency.setValueAtTime(659,now); osc.frequency.setValueAtTime(554,now+0.14); osc.frequency.setValueAtTime(440,now+0.28);
-      g.gain.setValueAtTime(0.4,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.55);
-      osc.start(now); osc.stop(now+0.55);
-    }} else if (t==='loss_warning') {{
-      osc.type='square';
-      osc.frequency.setValueAtTime(200,now); osc.frequency.setValueAtTime(150,now+0.2); osc.frequency.setValueAtTime(200,now+0.4);
-      g.gain.setValueAtTime(0.3,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.65);
-      osc.start(now); osc.stop(now+0.65);
-    }} else if (t==='session_open') {{
-      osc.type='triangle';
-      osc.frequency.setValueAtTime(523,now); osc.frequency.setValueAtTime(659,now+0.12); osc.frequency.setValueAtTime(784,now+0.24); osc.frequency.setValueAtTime(1047,now+0.36);
-      g.gain.setValueAtTime(0.35,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.6);
-      osc.start(now); osc.stop(now+0.6);
-    }} else if (t==='stop_hit') {{
-      osc.type='sawtooth';
-      for(var i=0;i<4;i++) {{ osc.frequency.setValueAtTime(300,now+i*0.25); osc.frequency.setValueAtTime(150,now+i*0.25+0.12); }}
-      g.gain.setValueAtTime(0.4,now); g.gain.exponentialRampToValueAtTime(0.001,now+1.1);
-      osc.start(now); osc.stop(now+1.1);
-    }} else {{
-      osc.type='sine'; osc.frequency.setValueAtTime(880,now);
-      g.gain.setValueAtTime(0.3,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.3);
-      osc.start(now); osc.stop(now+0.3);
+    function nota(freq, start, dur, type, vol) {{
+      var o = ctx.createOscillator();
+      var g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = type || 'sine';
+      o.frequency.setValueAtTime(freq, now + start);
+      g.gain.setValueAtTime(vol || 0.35, now + start);
+      g.gain.exponentialRampToValueAtTime(0.001, now + start + dur);
+      o.start(now + start);
+      o.stop(now + start + dur + 0.05);
     }}
-  }} catch(e) {{ console.log('audio err:',e); }}
-}}
-if (_tipo && _tipo!=='none') {{ setTimeout(function(){{qqePlay(_tipo);}},150); }}
-</script>"""
+    if (_t === 'signal_call') {{
+      nota(440,  0.00, 0.12, 'sine', 0.35);
+      nota(554,  0.13, 0.12, 'sine', 0.35);
+      nota(659,  0.26, 0.20, 'sine', 0.40);
+      nota(880,  0.48, 0.18, 'sine', 0.25);
+    }} else if (_t === 'signal_put') {{
+      nota(659,  0.00, 0.12, 'sine', 0.35);
+      nota(554,  0.13, 0.12, 'sine', 0.35);
+      nota(440,  0.26, 0.20, 'sine', 0.40);
+      nota(330,  0.48, 0.18, 'sine', 0.25);
+    }} else if (_t === 'signal') {{
+      nota(880,  0.00, 0.10, 'sine', 0.30);
+      nota(1047, 0.12, 0.15, 'sine', 0.30);
+    }} else if (_t === 'loss_warning') {{
+      nota(200, 0.00, 0.18, 'square', 0.28);
+      nota(150, 0.20, 0.18, 'square', 0.28);
+      nota(200, 0.40, 0.18, 'square', 0.28);
+    }} else if (_t === 'session_open') {{
+      nota(523,  0.00, 0.10, 'triangle', 0.30);
+      nota(659,  0.12, 0.10, 'triangle', 0.30);
+      nota(784,  0.24, 0.10, 'triangle', 0.30);
+      nota(1047, 0.36, 0.22, 'triangle', 0.35);
+    }} else if (_t === 'stop_hit') {{
+      nota(300, 0.00, 0.10, 'sawtooth', 0.38);
+      nota(150, 0.12, 0.10, 'sawtooth', 0.38);
+      nota(300, 0.25, 0.10, 'sawtooth', 0.38);
+      nota(150, 0.37, 0.10, 'sawtooth', 0.38);
+      nota(100, 0.50, 0.30, 'sawtooth', 0.30);
+    }}
+  }} catch(e) {{ console.warn('QQE audio error:', e); }}
+}})();
+</script>
+"""
+    components_v1.html(html_audio, height=0, scrolling=False)
 
 _snd = st.session_state.pop("_play_sound", "none")
 if racha_actual >= 2 and st.session_state.get("_racha_alerted",0) != racha_actual:
@@ -812,7 +861,7 @@ if _h_utc in (7,13) and _min_utc == 0:
     if not st.session_state.get(_ses_key,False):
         _snd = "session_open"; st.session_state[_ses_key] = True
 
-st.markdown(SONIDOS_JS.format(audio_on="true" if st.session_state.audio_on else "false", sound_type=_snd), unsafe_allow_html=True)
+play_audio_component(_snd, st.session_state.audio_on)
 
 
 
@@ -1625,7 +1674,7 @@ with tab_triple:
                     </div>
                   </div>
                   <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
-                    {''.join([f'<div style="background:#060c18;border:1px solid {"#16a34a" if r.get(f"f{i+1}",False) else "#dc2626"};border-radius:8px;padding:10px;text-align:center;"><div style="font-family:Share Tech Mono,monospace;font-size:9px;color:#4a7a99;">{lbl}</div><div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:20px;color:{"#4ade80" if r.get(f"f{i+1}",False) else "#dc2626"};">{"✓" if r.get(f"f{i+1}",False) else "✗"}</div></div>' for i,lbl in enumerate(["EMA 5/13/50","MACD HIST","RSI ZONA","VELA","VOLUMEN"])])}
+                    {_build_filtros_html(r)}
                   </div>
                   <!-- H1 Confluencia + métricas -->
                   <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">
@@ -1715,7 +1764,7 @@ with tab_triple:
                       <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:20px;color:#c8d8e8;">{r['activo']}</div>
                       <div style="font-family:Rajdhani,sans-serif;font-size:22px;color:{col_d};font-weight:700;">{ic} {r['direccion']}</div>
                       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;margin:8px 0;">
-                        {''.join([f'<div style="background:#060c18;border:1px solid {"#16a34a" if r[f"f{j+1}"] else "#374151"};border-radius:4px;padding:5px;text-align:center;font-family:Rajdhani,sans-serif;font-weight:700;font-size:14px;color:{"#4ade80" if r[f"f{j+1}"] else "#64748b"};">{"✓" if r[f"f{j+1}"] else "✗"}</div>' for j in range(4)])}
+                        {_build_filtros_mini_html(r)}
                       </div>
                       <div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#94a3b8;">RSI {r['rsi']:.1f} · ${st.session_state.capital*0.01:.2f}</div>
                       <div style="background:#2a1a00;border-radius:4px;padding:6px;margin-top:6px;font-family:Share Tech Mono,monospace;font-size:11px;color:#fbbf24;">⚠ Esperar 4to filtro</div>
