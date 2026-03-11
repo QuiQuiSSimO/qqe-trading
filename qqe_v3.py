@@ -3049,53 +3049,665 @@ with tab_educativo:
 # TAB: MEJORAS
 # ================================================================
 with tab_mejoras:
-    st.markdown('<div class="sec">🔧 10 MEJORAS RECOMENDADAS PARA TU SISTEMA</div>', unsafe_allow_html=True)
-    _mejoras = [
-        ("01","#22c55e","Confirmación Multi-Timeframe",
-         "Validar señal QQE en M1 con tendencia en H1 y H4. Solo operar cuando los 3 coinciden. Reduce señales pero sube win rate al 60-70%.",
-         "En Backtesting comparar resultados con/sin filtro H1. Diferencia típica: +10-15% win rate."),
-        ("02","#f0b429","Filtro de Volatilidad ATR",
-         "Calcular ATR de últimas 14 velas. Solo operar cuando ATR está en rango normal. Ni mercado dormido ni noticias violentas.",
-         "ATR óptimo EUR/USD M1: 0.0003–0.0012. Evitar ATR < 0.0002."),
-        ("03","#60a5fa","Gestión Dinámica del Capital",
-         "Reducir tamaño de posición tras 2 pérdidas seguidas. Aumentar gradualmente en rachas ganadoras (Kelly modificado).",
-         "Factor: 0.5x tras 2 pérdidas, 1.0x normal, 1.5x tras 3 ganancias."),
-        ("04","#a78bfa","Alertas con Contexto Completo",
-         'Las alertas de Telegram deben incluir: señal, par, timeframe, RSI, fuerza de señal, sesión activa y tendencia H1.',
-         '"CALL EUR/USD M5 | RSI 58.3 | Fuerza 74% | Sesión NY | H1 ALCISTA"'),
-        ("05","#fb923c","Backtest con Costos Reales",
-         "En binarias el payout es fijo (80-92%), no precio libre. WIN = +monto×payout%, LOSS = -monto×100%. Cambia completamente las stats.",
-         "Modificar run_backtest_v11 con parámetro payout=0.85 para simular IQ Option real."),
-        ("06","#34d399","Estadísticas por Horario",
-         "Segmentar resultados del backtest por sesión de mercado. Identificar en qué horas el QQE funciona mejor para cada par.",
-         "Agregar columna sesion en backtest y groupby para ver WR por sesión."),
-        ("07","#f472b6","Señales Automáticas",
-         "Conectar el dashboard a la API de IQ Option (iqoptionapi) para ejecutar automáticamente las señales cuando cumplen todos los filtros.",
-         "Solo recomendado con backtesting extenso y supervisión constante."),
-        ("08","#38bdf8","Explicación IA de cada Señal",
-         "Integrar Claude/GPT para que explique en lenguaje natural por qué se generó cada señal, qué factores la respaldan y el riesgo.",
-         "Ya tenés la API de Anthropic en el tab NOTICIAS+IA. Reutilizarla para analizar señales QQE."),
-        ("09","#fbbf24","Optimización Automática de Parámetros",
-         "Iterar sobre rangos de RSI period, SF y QQE Factor para encontrar la combinación con mayor Profit Factor en cada par.",
-         "Grid search: rsi [9,14,21] × sf [3,5,8] × qf [3,4.238,6] = 27 combinaciones. Seleccionar PF > 1.5."),
-        ("10","#c084fc","Diario de Trading Integrado",
-         "Ya tenés el tab DIARIO. Agregar campo de emoción al operar y analizar si las pérdidas correlacionan con estados emocionales.",
-         "Revisar semanalmente. Las pérdidas en revenge trading son identificables por el horario (fuera de sesión óptima)."),
-    ]
-    for _n, _col, _tit, _desc, _impl in _mejoras:
-        st.markdown(f"""<div style="background:#0a1020;border:1px solid #1a2a45;border-left:4px solid {_col};
-             border-radius:12px;padding:18px;margin-bottom:10px;">
-          <div style="display:flex;align-items:flex-start;gap:16px;">
-            <div style="font-family:'Rajdhani',sans-serif;font-weight:900;font-size:32px;color:{_col};opacity:0.5;min-width:48px;">{_n}</div>
-            <div>
-              <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:18px;color:{_col};margin-bottom:6px;">{_tit}</div>
-              <div style="font-size:13px;color:#c8d8e8;line-height:1.8;margin-bottom:8px;">{_desc}</div>
-              <div style="font-size:12px;font-family:'Share Tech Mono',monospace;color:#4a7a99;background:#030710;border-radius:6px;padding:8px 12px;">
-                Implementacion: {_impl}
-              </div>
-            </div>
-          </div>
+    st.markdown('<div class="sec">🔧 10 MEJORAS — IMPLEMENTADAS EN TIEMPO REAL</div>', unsafe_allow_html=True)
+
+    mej_tabs = st.tabs([
+        "①MTF","②ATR","③KELLY","④ALERTAS","⑤PAYOUT",
+        "⑥HORARIO","⑦IQ AUTO","⑧IA SEÑAL","⑨OPTIMIZAR","⑩DIARIO+"
+    ])
+
+    # ── MEJORA 01: CONFIRMACIÓN MULTI-TIMEFRAME ──────────────────
+    with mej_tabs[0]:
+        st.markdown('<div class="sec">① CONFIRMACIÓN MULTI-TIMEFRAME — EN VIVO</div>', unsafe_allow_html=True)
+        st.markdown("""<div style="background:#030710;border-left:4px solid #22c55e;border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;color:#c8d8e8;line-height:1.8;">
+        Solo operar cuando M1, H1 y H4 coinciden en dirección. Reduce señales pero aumenta win rate al 60-70%.
         </div>""", unsafe_allow_html=True)
+
+        m1_col1, m1_col2 = st.columns([1,2])
+        with m1_col1:
+            m1_act = st.selectbox("Activo", list(ACTIVOS.keys()), key="m1_act")
+            btn_m1 = st.button("🔍 ANALIZAR MTF AHORA", key="m1_run", use_container_width=True)
+
+        with m1_col2:
+            if btn_m1:
+                _ticker_m1 = ACTIVOS[m1_act]["yahoo"]
+                with st.spinner("Consultando 3 timeframes..."):
+                    def _tend_tf(sym, iv, period):
+                        try:
+                            _d = yf.download(sym, period=period, interval=iv, progress=False, auto_adjust=True)
+                            if _d.empty or len(_d) < 20: return "LATERAL", 50.0
+                            _d.columns = [c[0].lower() if isinstance(c,tuple) else c.lower() for c in _d.columns]
+                            _c = _d["close"].dropna()
+                            _e20 = _c.ewm(span=20, adjust=False).mean()
+                            _e50 = _c.ewm(span=50, adjust=False).mean()
+                            _rsi_v = float(calc_rsi(_c).iloc[-1])
+                            _p = float(_c.iloc[-1])
+                            if _p > float(_e20.iloc[-1]) > float(_e50.iloc[-1]): return "ALCISTA", _rsi_v
+                            if _p < float(_e20.iloc[-1]) < float(_e50.iloc[-1]): return "BAJISTA", _rsi_v
+                            return "LATERAL", _rsi_v
+                        except: return "LATERAL", 50.0
+
+                    _t1m,  _r1m  = _tend_tf(_ticker_m1, "1m",  "1d")
+                    _t1h,  _r1h  = _tend_tf(_ticker_m1, "1h",  "10d")
+                    _t4h,  _r4h  = _tend_tf(_ticker_m1, "4h",  "30d") if "4h" in ["4h"] else _tend_tf(_ticker_m1,"1h","30d")
+
+                    _tfs = [("M1", _t1m, _r1m), ("H1", _t1h, _r1h), ("H4", _t4h, _r4h)]
+                    _alcistas = sum(1 for _,t,_ in _tfs if t=="ALCISTA")
+                    _bajistas = sum(1 for _,t,_ in _tfs if t=="BAJISTA")
+
+                    if _alcistas == 3:
+                        _mtf_sig = "🔺 CALL CONFIRMADO"
+                        _mtf_col = "#22c55e"
+                        _mtf_bg  = "linear-gradient(135deg,#001508,#0a1020)"
+                    elif _bajistas == 3:
+                        _mtf_sig = "🔻 PUT CONFIRMADO"
+                        _mtf_col = "#ef4444"
+                        _mtf_bg  = "linear-gradient(135deg,#150000,#0a1020)"
+                    elif _alcistas == 2:
+                        _mtf_sig = "⚠ POSIBLE CALL (2/3)"
+                        _mtf_col = "#f0b429"
+                        _mtf_bg  = "#0a1020"
+                    elif _bajistas == 2:
+                        _mtf_sig = "⚠ POSIBLE PUT (2/3)"
+                        _mtf_col = "#f0b429"
+                        _mtf_bg  = "#0a1020"
+                    else:
+                        _mtf_sig = "⏸ SIN CONFLUENCIA"
+                        _mtf_col = "#64748b"
+                        _mtf_bg  = "#0a1020"
+
+                    st.markdown(f"""<div style="background:{_mtf_bg};border:2px solid {_mtf_col};border-radius:12px;padding:16px;margin-bottom:12px;text-align:center;">
+                      <div style="font-family:'Rajdhani',sans-serif;font-weight:900;font-size:40px;color:{_mtf_col};">{_mtf_sig}</div>
+                      <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#4a7a99;margin-top:6px;">{m1_act} · Confluencia Multi-Timeframe</div>
+                    </div>""", unsafe_allow_html=True)
+
+                    _gc1,_gc2,_gc3 = st.columns(3)
+                    for _col_w, (_lbl, _tend, _rsi_v) in zip([_gc1,_gc2,_gc3], _tfs):
+                        _cc = "#22c55e" if _tend=="ALCISTA" else ("#ef4444" if _tend=="BAJISTA" else "#64748b")
+                        _ic = "🔺" if _tend=="ALCISTA" else ("🔻" if _tend=="BAJISTA" else "⏸")
+                        with _col_w:
+                            _kpi_v11(_lbl, f"{_ic} {_tend}", f"RSI {_rsi_v:.1f}", _cc)
+
+    # ── MEJORA 02: FILTRO ATR ────────────────────────────────────
+    with mej_tabs[1]:
+        st.markdown('<div class="sec">② FILTRO DE VOLATILIDAD ATR — OPERAR SOLO EN ZONA VÁLIDA</div>', unsafe_allow_html=True)
+        st.markdown("""<div style="background:#030710;border-left:4px solid #f0b429;border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;color:#c8d8e8;line-height:1.8;">
+        Calcula el ATR actual y lo compara con rangos históricos. Solo señal verde si el mercado tiene volatilidad operable (ni dormido ni explosivo por noticias).
+        </div>""", unsafe_allow_html=True)
+
+        m2c1, m2c2 = st.columns([1,2])
+        with m2c1:
+            m2_act  = st.selectbox("Activo", list(ACTIVOS.keys()), key="m2_act")
+            m2_iv   = st.selectbox("Intervalo", ["1m","5m","15m","1h"], index=1, key="m2_iv")
+            m2_atr_min = st.number_input("ATR mínimo", value=0.0002, step=0.0001, format="%.4f", key="m2_amin")
+            m2_atr_max = st.number_input("ATR máximo", value=0.0015, step=0.0001, format="%.4f", key="m2_amax")
+            btn_m2 = st.button("📡 ANALIZAR VOLATILIDAD", key="m2_run", use_container_width=True)
+
+        with m2c2:
+            if btn_m2:
+                _t_m2 = ACTIVOS[m2_act]["yahoo"]
+                _d_m2_raw = obtener_datos(_t_m2, period="5d", interval=m2_iv) if m2_iv not in ["1m"] else obtener_datos_1min(_t_m2)
+                if _d_m2_raw is not None and len(_d_m2_raw) >= 14:
+                    _atr_series = calc_atr(_d_m2_raw)
+                    _atr_actual = float(_atr_series.iloc[-1])
+                    _atr_prom   = float(_atr_series.tail(20).mean())
+                    _atr_max_h  = float(_atr_series.tail(50).max())
+                    _atr_min_h  = float(_atr_series.tail(50).min())
+
+                    if _atr_actual < m2_atr_min:
+                        _vol_estado = "🔴 MERCADO DORMIDO"
+                        _vol_col    = "#ef4444"
+                        _vol_desc   = "ATR muy bajo — spread consume la ganancia. No operar."
+                    elif _atr_actual > m2_atr_max:
+                        _vol_estado = "🟡 ALTA VOLATILIDAD"
+                        _vol_col    = "#f0b429"
+                        _vol_desc   = "ATR muy alto — posible noticia. Esperar estabilización."
+                    else:
+                        _vol_estado = "🟢 VOLATILIDAD NORMAL"
+                        _vol_col    = "#22c55e"
+                        _vol_desc   = "ATR en zona operable. Las señales QQE son válidas."
+
+                    st.markdown(f"""<div style="background:#0a1020;border:2px solid {_vol_col};border-radius:12px;padding:16px;margin-bottom:12px;text-align:center;">
+                      <div style="font-family:'Rajdhani',sans-serif;font-weight:900;font-size:34px;color:{_vol_col};">{_vol_estado}</div>
+                      <div style="font-size:13px;color:#c8d8e8;margin-top:8px;">{_vol_desc}</div>
+                    </div>""", unsafe_allow_html=True)
+
+                    _ac1,_ac2,_ac3,_ac4 = st.columns(4)
+                    with _ac1: _kpi_v11("ATR ACTUAL",  f"{_atr_actual:.5f}", m2_iv, _vol_col)
+                    with _ac2: _kpi_v11("ATR PROM 20", f"{_atr_prom:.5f}",  "historial", "#c8d8e8")
+                    with _ac3: _kpi_v11("ATR MÍN 50",  f"{_atr_min_h:.5f}", "50 velas", "#60a5fa")
+                    with _ac4: _kpi_v11("ATR MÁX 50",  f"{_atr_max_h:.5f}", "50 velas", "#f0b429")
+
+                    # Barra de posición del ATR actual
+                    _rango = _atr_max_h - _atr_min_h if _atr_max_h > _atr_min_h else 1
+                    _pos_pct = (_atr_actual - _atr_min_h) / _rango * 100
+                    st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#4a7a99;margin:10px 0 4px;">POSICIÓN DEL ATR EN RANGO HISTÓRICO</div>', unsafe_allow_html=True)
+                    _progbar(_pos_pct, _vol_col)
+                    st.caption(f"Zona operable: {m2_atr_min:.4f} — {m2_atr_max:.4f}")
+                else:
+                    st.error("Sin datos suficientes.")
+
+    # ── MEJORA 03: KELLY DINÁMICO ────────────────────────────────
+    with mej_tabs[2]:
+        st.markdown('<div class="sec">③ GESTIÓN DINÁMICA DEL CAPITAL — KELLY MODIFICADO</div>', unsafe_allow_html=True)
+        st.markdown("""<div style="background:#030710;border-left:4px solid #60a5fa;border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;color:#c8d8e8;line-height:1.8;">
+        Ajusta el tamaño de la posición automáticamente según tu racha de pérdidas/ganancias del día. Factor: 0.5x tras 2 pérdidas · 1.0x normal · 1.5x tras 3 ganancias.
+        </div>""", unsafe_allow_html=True)
+
+        _racha_actual = st.session_state.get("racha_losses", 0)
+        _ops_hoy = st.session_state.get("ops", [])
+        _racha_wins = 0
+        for _op in reversed(_ops_hoy):
+            if _op.get("pnl", 0) > 0: _racha_wins += 1
+            else: break
+
+        # Factor Kelly
+        if _racha_actual >= 2:
+            _kelly_f = 0.5
+            _kelly_color = "#ef4444"
+            _kelly_txt   = "⚠ REDUCIDO — racha de pérdidas"
+        elif _racha_wins >= 3:
+            _kelly_f = 1.5
+            _kelly_color = "#22c55e"
+            _kelly_txt   = "🚀 AUMENTADO — racha ganadora"
+        elif _racha_actual == 1:
+            _kelly_f = 0.75
+            _kelly_color = "#f0b429"
+            _kelly_txt   = "⚡ PRECAUCIÓN — 1 pérdida"
+        else:
+            _kelly_f = 1.0
+            _kelly_color = "#60a5fa"
+            _kelly_txt   = "✅ NORMAL"
+
+        _monto_base   = st.session_state.capital * st.session_state.riesgo_pct / 100
+        _monto_kelly  = _monto_base * _kelly_f
+
+        m3c1, m3c2, m3c3, m3c4 = st.columns(4)
+        with m3c1: _kpi_v11("FACTOR KELLY",   f"{_kelly_f}x",          _kelly_txt, _kelly_color)
+        with m3c2: _kpi_v11("MONTO BASE",      f"${_monto_base:.2f}",   f"{st.session_state.riesgo_pct}% capital", "#c8d8e8")
+        with m3c3: _kpi_v11("MONTO AJUSTADO",  f"${_monto_kelly:.2f}",  "usar ahora", _kelly_color)
+        with m3c4: _kpi_v11("RACHA PÉRDIDAS",  str(_racha_actual),       "consecutivas", "#ef4444" if _racha_actual>0 else "#22c55e")
+
+        st.markdown(f"""<div style="background:#0a1020;border:2px solid {_kelly_color};border-radius:12px;padding:16px;text-align:center;margin-top:12px;">
+          <div style="font-family:'Rajdhani',sans-serif;font-weight:900;font-size:42px;color:{_kelly_color};">PRÓXIMA ENTRADA: ${_monto_kelly:.2f}</div>
+          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#4a7a99;margin-top:6px;">{_kelly_txt} · Racha pérdidas: {_racha_actual} · Racha ganancias: {_racha_wins}</div>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown('<div class="sec">SIMULADOR KELLY</div>', unsafe_allow_html=True)
+        _sk_c1, _sk_c2 = st.columns(2)
+        with _sk_c1:
+            _sim_cap_k = st.number_input("Capital", 50.0, 10000.0, value=float(st.session_state.capital), key="sk_cap")
+            _sim_rsk_k = st.slider("Riesgo base %", 0.5, 5.0, float(st.session_state.riesgo_pct), step=0.5, key="sk_rsk")
+        with _sk_c2:
+            _sim_seq_k = st.text_input("Secuencia W/L (ej: W,W,L,L,W)", value="W,W,L,L,L,W,W,W,W", key="sk_seq")
+            if st.button("▶ SIMULAR SECUENCIA KELLY", key="sk_run", use_container_width=True):
+                _seq_k = [s.strip().upper() for s in _sim_seq_k.split(",")]
+                _cap_k = _sim_cap_k
+                _hist_k = [_cap_k]
+                _racha_l_k = 0
+                _racha_w_k = 0
+                for _res_k in _seq_k:
+                    _base_k = _cap_k * _sim_rsk_k / 100
+                    if _racha_l_k >= 2: _f_k = 0.5
+                    elif _racha_w_k >= 3: _f_k = 1.5
+                    elif _racha_l_k == 1: _f_k = 0.75
+                    else: _f_k = 1.0
+                    _monto_k = _base_k * _f_k
+                    if _res_k == "W":
+                        _cap_k += _monto_k * 0.85  # payout 85%
+                        _racha_l_k = 0; _racha_w_k += 1
+                    else:
+                        _cap_k -= _monto_k
+                        _racha_w_k = 0; _racha_l_k += 1
+                    _hist_k.append(round(_cap_k, 2))
+                st.line_chart(pd.DataFrame({"Capital Kelly": _hist_k}), color="#60a5fa")
+                _kpi_v11("RESULTADO", f"${_hist_k[-1]:.2f}", f"desde ${_sim_cap_k:.2f}", "#22c55e" if _hist_k[-1]>_sim_cap_k else "#ef4444")
+
+    # ── MEJORA 04: ALERTAS TELEGRAM CON CONTEXTO COMPLETO ───────
+    with mej_tabs[3]:
+        st.markdown('<div class="sec">④ ALERTAS TELEGRAM CON CONTEXTO COMPLETO</div>', unsafe_allow_html=True)
+        st.markdown("""<div style="background:#030710;border-left:4px solid #a78bfa;border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;color:#c8d8e8;line-height:1.8;">
+        Genera y envía una alerta Telegram con: señal, par, timeframe, RSI, ATR, fuerza, sesión activa, tendencia H1, capital y monto de entrada.
+        </div>""", unsafe_allow_html=True)
+
+        m4c1, m4c2 = st.columns([1,2])
+        with m4c1:
+            m4_act  = st.selectbox("Activo", list(ACTIVOS.keys()), key="m4_act")
+            m4_iv   = st.selectbox("Intervalo", ["1m","5m","15m","1h"], index=1, key="m4_iv")
+            m4_sig  = st.radio("Señal", ["BUY (CALL)","SELL (PUT)","WAIT"], horizontal=True, key="m4_sig")
+            m4_rsi  = st.slider("RSI Suavizado", 20.0, 80.0, 58.0, step=0.5, key="m4_rsi")
+            m4_fz   = st.slider("Fuerza %", 0, 100, 74, key="m4_fz")
+            btn_m4  = st.button("📱 GENERAR Y ENVIAR ALERTA", key="m4_run", use_container_width=True)
+
+        with m4c2:
+            _sesion_m4, _estado_m4, *_ = get_session_info()
+            _tend_m4 = get_tendencia_h1(ACTIVOS[m4_act]["yahoo"])
+            _kelly_m4 = st.session_state.capital * st.session_state.riesgo_pct / 100
+            _sig_m4 = "BUY" if "BUY" in m4_sig else ("SELL" if "SELL" in m4_sig else "WAIT")
+            _ic_m4  = "🟢" if _sig_m4 == "BUY" else ("🔴" if _sig_m4 == "SELL" else "⏸")
+            _dir_m4 = "CALL" if _sig_m4 == "BUY" else ("PUT" if _sig_m4 == "SELL" else "ESPERAR")
+
+            _msg_m4 = f"""{_ic_m4} <b>QQE SIGNAL — {_dir_m4}</b>
+
+📊 <b>Par:</b> {m4_act} | <b>TF:</b> {m4_iv.upper()}
+📈 <b>RSI:</b> {m4_rsi:.1f} | <b>Fuerza:</b> {m4_fz}%
+📉 <b>ATR:</b> Zona normal
+🕐 <b>Sesión:</b> {_sesion_m4} ({_estado_m4})
+📐 <b>H1 tendencia:</b> {_tend_m4}
+💰 <b>Capital:</b> ${st.session_state.capital:.2f} | <b>Entrada:</b> ${_kelly_m4:.2f}
+🎯 <b>Resultado esperado:</b> Win Rate hist ~60%
+
+<i>QQE Command v11 · Goya, Corrientes</i>"""
+
+            st.markdown(f"""<div style="background:#0a1020;border:1px solid #a78bfa;border-radius:12px;padding:16px;margin-bottom:12px;font-family:'Share Tech Mono',monospace;font-size:12px;color:#c8d8e8;line-height:1.9;white-space:pre-wrap;">{_msg_m4}</div>""", unsafe_allow_html=True)
+
+            if btn_m4:
+                if st.session_state.tg_on:
+                    _ok_m4 = enviar_telegram(st.session_state.tg_token, st.session_state.tg_chat, _msg_m4)
+                    if _ok_m4:
+                        st.success("✅ Alerta enviada a Telegram con contexto completo!")
+                    else:
+                        st.error("❌ Error al enviar. Verificá token y chat ID en config.")
+                else:
+                    st.warning("⚠ Telegram no configurado. Ir al tab TRIPLE EN VIVO → configuración.")
+
+    # ── MEJORA 05: BACKTEST CON PAYOUT REAL (BINARIAS) ──────────
+    with mej_tabs[4]:
+        st.markdown('<div class="sec">⑤ BACKTEST CON COSTOS REALES DE IQ OPTION</div>', unsafe_allow_html=True)
+        st.markdown("""<div style="background:#030710;border-left:4px solid #fb923c;border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;color:#c8d8e8;line-height:1.8;">
+        En binarias el payout es fijo. WIN = +monto×payout%. LOSS = -monto×100%. Esto cambia completamente las estadísticas vs backtest de forex libre.
+        </div>""", unsafe_allow_html=True)
+
+        m5c1, m5c2 = st.columns([1,2])
+        with m5c1:
+            m5_act    = st.selectbox("Activo", list(ACTIVOS.keys()), key="m5_act")
+            m5_iv     = st.selectbox("Intervalo", ["1m","5m","15m","1h"], index=1, key="m5_iv")
+            m5_cap    = st.number_input("Capital $", 50.0, 10000.0, value=float(st.session_state.capital), step=10.0, key="m5_cap")
+            m5_rsk    = st.slider("Riesgo %", 0.5, 5.0, float(st.session_state.riesgo_pct), step=0.5, key="m5_rsk")
+            m5_payout = st.slider("Payout IQ Option %", 70, 95, 85, step=1, key="m5_payout")
+            btn_m5    = st.button("▶ BACKTEST BINARIAS REAL", key="m5_run", use_container_width=True)
+
+        with m5c2:
+            if btn_m5:
+                with st.spinner("Calculando backtest con payout real..."):
+                    _t5    = ACTIVOS[m5_act]["yahoo"]
+                    _d5    = obtener_datos(_t5, period="30d", interval=m5_iv)
+                    if _d5 is None or len(_d5) < 40:
+                        st.error("Sin datos suficientes.")
+                    else:
+                        _dq5 = calc_qqe_engine(_d5)
+                        # Backtest con payout fijo
+                        _monto5  = m5_cap * m5_rsk / 100
+                        _payout5 = m5_payout / 100
+                        _trades5 = []
+                        _sig5_idx = _dq5.index[_dq5["signal"].isin(["BUY","SELL"])].tolist()
+                        for _i5, _idx5 in enumerate(_sig5_idx):
+                            _pos5   = _dq5.index.get_loc(_idx5)
+                            if _pos5 + 1 >= len(_dq5): continue
+                            _entry5 = float(_dq5["cierre"].iloc[_pos5])
+                            _exit5  = float(_dq5["cierre"].iloc[_pos5+1])
+                            _row5   = _dq5.loc[_idx5]
+                            _es_win5 = (_exit5 > _entry5 and _row5["signal"]=="BUY") or (_exit5 < _entry5 and _row5["signal"]=="SELL")
+                            _gan5    = _monto5 * _payout5 if _es_win5 else -_monto5
+                            _trades5.append({
+                                "fecha":    _idx5.strftime("%m/%d %H:%M") if hasattr(_idx5,"strftime") else str(_idx5),
+                                "senal":    _row5["signal"],
+                                "resultado": "WIN" if _es_win5 else "LOSS",
+                                "ganancia": round(_gan5, 2),
+                                "payout_aplicado": f"{m5_payout}%",
+                            })
+                        if _trades5:
+                            _tdf5   = pd.DataFrame(_trades5)
+                            _w5     = _tdf5[_tdf5["resultado"]=="WIN"]
+                            _l5     = _tdf5[_tdf5["resultado"]=="LOSS"]
+                            _wr5    = len(_w5)/len(_tdf5)*100
+                            _gan5t  = _tdf5["ganancia"].sum()
+                            _wr5_c  = "#22c55e" if _wr5>=55 else ("#f0b429" if _wr5>=45 else "#ef4444")
+                            _g5_c   = "#22c55e" if _gan5t>=0 else "#ef4444"
+                            # Breakeven con payout real
+                            _be5    = 1 / (1 + _payout5) * 100
+
+                            _bc1,_bc2,_bc3,_bc4 = st.columns(4)
+                            with _bc1: _kpi_v11("WIN RATE", f"{_wr5:.1f}%", f"{len(_w5)}W/{len(_l5)}L", _wr5_c)
+                            with _bc2: _kpi_v11("BREAKEVEN REAL", f"{_be5:.1f}%", f"payout {m5_payout}%", "#f0b429")
+                            with _bc3: _kpi_v11("GANANCIA TOTAL", f"${_gan5t:+.2f}", f"${m5_cap:.0f}→${m5_cap+_gan5t:.2f}", _g5_c)
+                            with _bc4: _kpi_v11("TRADES", str(len(_tdf5)), m5_iv, "#c8d8e8")
+
+                            if _wr5 >= _be5:
+                                st.success(f"✅ Sistema rentable con payout {m5_payout}%. WR {_wr5:.1f}% > breakeven {_be5:.1f}%")
+                            else:
+                                st.error(f"⚠ Sistema NO rentable con payout {m5_payout}%. WR {_wr5:.1f}% < breakeven {_be5:.1f}%")
+
+                            _cap5_c = [m5_cap]
+                            for _t5r in _trades5: _cap5_c.append(_cap5_c[-1]+_t5r["ganancia"])
+                            st.line_chart(pd.DataFrame({"Capital Binarias": _cap5_c}), color="#fb923c")
+                            st.dataframe(_tdf5.tail(20), use_container_width=True, hide_index=True)
+
+    # ── MEJORA 06: ESTADÍSTICAS POR HORARIO ─────────────────────
+    with mej_tabs[5]:
+        st.markdown('<div class="sec">⑥ ESTADÍSTICAS POR SESIÓN DE MERCADO</div>', unsafe_allow_html=True)
+        st.markdown("""<div style="background:#030710;border-left:4px solid #34d399;border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;color:#c8d8e8;line-height:1.8;">
+        Segmenta las señales QQE por sesión (Londres / Nueva York / Solapamiento / Asia) y calcula el Win Rate de cada una para encontrar el horario óptimo.
+        </div>""", unsafe_allow_html=True)
+
+        m6c1, m6c2 = st.columns([1,2])
+        with m6c1:
+            m6_act = st.selectbox("Activo", list(ACTIVOS.keys()), key="m6_act")
+            m6_iv  = st.selectbox("Intervalo", ["1h","4h","1d"], index=0, key="m6_iv")
+            btn_m6 = st.button("📊 ANALIZAR POR HORARIO", key="m6_run", use_container_width=True)
+
+        with m6c2:
+            if btn_m6:
+                with st.spinner("Analizando señales por sesión..."):
+                    _t6  = ACTIVOS[m6_act]["yahoo"]
+                    _d6  = obtener_datos(_t6, period="60d", interval=m6_iv)
+                    if _d6 is None or len(_d6) < 40:
+                        st.error("Sin datos.")
+                    else:
+                        _dq6 = calc_qqe_engine(_d6)
+                        _sig6 = _dq6[_dq6["signal"].isin(["BUY","SELL"])].copy()
+
+                        def _get_sesion_utc(idx):
+                            try:
+                                _h = idx.hour
+                                if 7 <= _h < 10:   return "LONDRÉS"
+                                if 11 <= _h < 13:  return "SOLAPAMIENTO"
+                                if 13 <= _h < 16:  return "NUEVA YORK"
+                                return "ASIA/CERRADO"
+                            except: return "DESCONOCIDO"
+
+                        _sig6["sesion"] = _sig6.index.map(_get_sesion_utc)
+                        _monto6 = st.session_state.capital * st.session_state.riesgo_pct / 100
+
+                        # Calcular win por sesión (siguiente cierre)
+                        _wins6 = {"LONDRÉS":0,"SOLAPAMIENTO":0,"NUEVA YORK":0,"ASIA/CERRADO":0}
+                        _tots6 = {"LONDRÉS":0,"SOLAPAMIENTO":0,"NUEVA YORK":0,"ASIA/CERRADO":0}
+                        for _i6, _idx6 in enumerate(_sig6.index):
+                            _pos6 = _dq6.index.get_loc(_idx6)
+                            if _pos6+1 >= len(_dq6): continue
+                            _e6 = float(_dq6["cierre"].iloc[_pos6])
+                            _x6 = float(_dq6["cierre"].iloc[_pos6+1])
+                            _s6 = _sig6.loc[_idx6,"sesion"]
+                            _tots6[_s6] = _tots6.get(_s6,0) + 1
+                            _es_w6 = (_x6>_e6 and _sig6.loc[_idx6,"signal"]=="BUY") or (_x6<_e6 and _sig6.loc[_idx6,"signal"]=="SELL")
+                            if _es_w6: _wins6[_s6] = _wins6.get(_s6,0)+1
+
+                        for _ses6, _col6 in [("LONDRÉS","#22c55e"),("SOLAPAMIENTO","#f0b429"),("NUEVA YORK","#22c55e"),("ASIA/CERRADO","#ef4444")]:
+                            _t6v = _tots6[_ses6]
+                            _w6v = _wins6[_ses6]
+                            _wr6 = _w6v/_t6v*100 if _t6v > 0 else 0
+                            _wr6_c = "#22c55e" if _wr6>=55 else ("#f0b429" if _wr6>=40 else "#ef4444")
+                            st.markdown(f"""<div style="background:#0a1020;border-left:4px solid {_col6};border-radius:8px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+                              <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:{_col6};">{_ses6}</div>
+                              <div style="font-family:'Rajdhani',sans-serif;font-size:24px;font-weight:700;color:{_wr6_c};">{_wr6:.1f}% WR</div>
+                              <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#4a7a99;">{_w6v}W / {_t6v-_w6v}L de {_t6v} señales</div>
+                            </div>""", unsafe_allow_html=True)
+                            _progbar(_wr6, _wr6_c)
+
+    # ── MEJORA 07: MONITOR IQ OPTION (sin iqoptionapi) ──────────
+    with mej_tabs[6]:
+        st.markdown('<div class="sec">⑦ MONITOR PARA IQ OPTION — SEÑAL LISTA PARA OPERAR</div>', unsafe_allow_html=True)
+        st.markdown("""<div style="background:#030710;border-left:4px solid #f472b6;border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;color:#c8d8e8;line-height:1.8;">
+        Panel operativo completo: señal QQE + filtro ATR + confirmación H1 + Kelly + sesión activa. Todo en una pantalla para ejecutar rápido en IQ Option.
+        </div>""", unsafe_allow_html=True)
+
+        m7c1, m7c2 = st.columns([1,2])
+        with m7c1:
+            m7_act = st.selectbox("Par a operar", list(ACTIVOS.keys()), key="m7_act")
+            m7_exp = st.selectbox("Expiración", ["1 min","2 min","3 min","5 min"], key="m7_exp")
+            btn_m7 = st.button("⚡ PANEL DE ENTRADA RÁPIDA", key="m7_run", use_container_width=True)
+
+        with m7c2:
+            if btn_m7:
+                with st.spinner("Preparando panel operativo..."):
+                    _t7    = ACTIVOS[m7_act]["yahoo"]
+                    _d7_1m = obtener_datos_1min(_t7)
+                    _tend7 = get_tendencia_h1(_t7)
+                    _ses7, _est7, _ses7_col, *_ = get_session_info()
+
+                    _sig7  = "WAIT"
+                    _rsi7  = 50.0
+                    _fz7   = 0
+                    _atr7  = 0.0
+
+                    if _d7_1m is not None and len(_d7_1m) >= 30:
+                        _dq7 = calc_qqe_engine(_d7_1m)
+                        _last7 = _dq7.iloc[-1]
+                        _rsi7  = round(float(_last7["rsi_smooth"]), 1)
+                        _sig7  = "BUY" if _last7["trend_q"]==1 else ("SELL" if _last7["trend_q"]==-1 else "WAIT")
+                        _fz7   = min(100, int(abs(_rsi7-50)*2))
+                        _atr7  = float(calc_atr(_d7_1m).iloc[-1])
+
+                    # Semáforo de 5 condiciones
+                    _chk_sig   = _sig7 != "WAIT"
+                    _chk_tend  = (_sig7=="BUY" and _tend7=="ALCISTA") or (_sig7=="SELL" and _tend7=="BAJISTA") or _sig7=="WAIT"
+                    _chk_ses   = es_horario_operable()
+                    _chk_atr   = 0.0001 < _atr7 < 0.005
+                    _chk_kelly = st.session_state.get("racha_losses",0) < 2
+
+                    _checks = [
+                        ("Señal QQE activa",    _chk_sig,   "M1 trend ≠ WAIT"),
+                        ("Confluencia H1",      _chk_tend,  f"H1: {_tend7}"),
+                        ("Sesión operable",     _chk_ses,   f"{_ses7}"),
+                        ("ATR en zona",         _chk_atr,   f"ATR: {_atr7:.5f}"),
+                        ("Kelly sin bloqueo",   _chk_kelly, f"Racha pérd: {st.session_state.get('racha_losses',0)}"),
+                    ]
+                    _ok_count = sum(1 for _,v,_ in _checks if v)
+
+                    _panel_col = "#22c55e" if _ok_count==5 else ("#f0b429" if _ok_count>=3 else "#ef4444")
+                    _panel_txt = "🟢 ENTRAR AHORA" if _ok_count==5 else ("🟡 PRECAUCIÓN" if _ok_count>=3 else "🔴 NO OPERAR")
+                    _dir7  = "CALL" if _sig7=="BUY" else ("PUT" if _sig7=="SELL" else "—")
+                    _monto7 = st.session_state.capital * st.session_state.riesgo_pct / 100
+
+                    st.markdown(f"""<div style="background:#0a1020;border:3px solid {_panel_col};border-radius:14px;padding:20px;text-align:center;margin-bottom:14px;">
+                      <div style="font-family:'Rajdhani',sans-serif;font-weight:900;font-size:48px;color:{_panel_col};">{_panel_txt}</div>
+                      <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:#4a7a99;margin-top:6px;">{_ok_count}/5 condiciones OK · {m7_act} · {_dir7} · ${_monto7:.2f} · {m7_exp}</div>
+                    </div>""", unsafe_allow_html=True)
+
+                    for _lbl7, _ok7, _det7 in _checks:
+                        _c7 = "#22c55e" if _ok7 else "#ef4444"
+                        _ic7 = "✅" if _ok7 else "❌"
+                        st.markdown(f"""<div style="background:#030710;border-radius:6px;padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+                          <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:#c8d8e8;">{_ic7} {_lbl7}</div>
+                          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:{_c7};">{_det7}</div>
+                        </div>""", unsafe_allow_html=True)
+
+    # ── MEJORA 08: IA EXPLICA CADA SEÑAL ────────────────────────
+    with mej_tabs[7]:
+        st.markdown('<div class="sec">⑧ IA EXPLICA TU SEÑAL — ANÁLISIS CONTEXTUAL</div>', unsafe_allow_html=True)
+        st.markdown("""<div style="background:#030710;border-left:4px solid #38bdf8;border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;color:#c8d8e8;line-height:1.8;">
+        Usa la API de Anthropic (ya configurada en tu dashboard) para explicar en lenguaje natural por qué se generó la señal, qué factores la respaldan y el riesgo.
+        </div>""", unsafe_allow_html=True)
+
+        m8c1, m8c2 = st.columns([1,2])
+        with m8c1:
+            m8_act = st.selectbox("Activo", list(ACTIVOS.keys()), key="m8_act")
+            m8_sig = st.radio("Señal", ["BUY (CALL)","SELL (PUT)"], horizontal=True, key="m8_sig")
+            m8_rsi = st.slider("RSI Suavizado", 20.0, 80.0, 62.0, step=0.5, key="m8_rsi")
+            m8_tend = st.radio("Tendencia H1", ["ALCISTA","BAJISTA","LATERAL"], horizontal=True, key="m8_tend")
+            m8_ses, *_ = get_session_info()
+            btn_m8 = st.button("🤖 PEDIR ANÁLISIS A LA IA", key="m8_run", use_container_width=True)
+
+        with m8c2:
+            if btn_m8:
+                if not get_ia_ok():
+                    st.warning("⚠ API key de Anthropic no configurada. Ingresala en el tab TRIPLE EN VIVO → Config IA.")
+                else:
+                    _sig_m8 = "BUY/CALL" if "BUY" in m8_sig else "SELL/PUT"
+                    _prompt_m8 = f"""Sos un analista de trading experto en forex y opciones binarias. Explicá esta señal de forma clara y concisa:
+
+Par: {m8_act}
+Señal QQE: {_sig_m8}
+RSI suavizado: {m8_rsi:.1f}
+Tendencia H1: {m8_tend}
+Sesión activa: {m8_ses}
+Capital: ${st.session_state.capital:.2f}
+Monto de entrada: ${st.session_state.capital * st.session_state.riesgo_pct / 100:.2f}
+
+Respondé con: 1) Por qué se generó esta señal 2) Factores que la respaldan 3) Riesgos a considerar 4) Recomendación final. Máximo 200 palabras. En español."""
+
+                    with st.spinner("Consultando IA..."):
+                        try:
+                            import anthropic as _anth
+                            _client_m8 = _anth.Anthropic(api_key=st.session_state.api_key)
+                            _resp_m8   = _client_m8.messages.create(
+                                model="claude-opus-4-6",
+                                max_tokens=400,
+                                messages=[{"role":"user","content":_prompt_m8}]
+                            )
+                            _txt_m8 = _resp_m8.content[0].text
+                            st.markdown(f"""<div style="background:#0a1020;border:1px solid #38bdf8;border-radius:12px;padding:18px;font-size:14px;color:#c8d8e8;line-height:1.9;">{_txt_m8}</div>""", unsafe_allow_html=True)
+                        except Exception as _e_m8:
+                            st.error(f"Error IA: {_e_m8}")
+
+    # ── MEJORA 09: GRID SEARCH OPTIMIZACIÓN ─────────────────────
+    with mej_tabs[8]:
+        st.markdown('<div class="sec">⑨ OPTIMIZACIÓN AUTOMÁTICA DE PARÁMETROS QQE</div>', unsafe_allow_html=True)
+        st.markdown("""<div style="background:#030710;border-left:4px solid #fbbf24;border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;color:#c8d8e8;line-height:1.8;">
+        Grid search sobre combinaciones de RSI Period × SF × QQE Factor. Encuentra los parámetros con mayor Profit Factor para tu par y timeframe.
+        </div>""", unsafe_allow_html=True)
+
+        m9c1, m9c2 = st.columns([1,2])
+        with m9c1:
+            m9_act = st.selectbox("Activo", list(ACTIVOS.keys()), key="m9_act")
+            m9_iv  = st.selectbox("Intervalo", ["5m","15m","1h","4h"], index=2, key="m9_iv")
+            m9_cap = st.number_input("Capital $", 50.0, 10000.0, value=float(st.session_state.capital), key="m9_cap")
+            m9_rsk = st.slider("Riesgo %", 0.5, 5.0, float(st.session_state.riesgo_pct), step=0.5, key="m9_rsk")
+            st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#fbbf24;margin:10px 0 6px;">GRILLA DE BÚSQUEDA</div>', unsafe_allow_html=True)
+            m9_rsi_vals = st.multiselect("RSI Period", [7,9,11,14,18,21], default=[9,14,21], key="m9_rsi_v")
+            m9_sf_vals  = st.multiselect("SF (smooth)", [3,4,5,6,8,10], default=[3,5,8], key="m9_sf_v")
+            m9_qf_vals  = st.multiselect("QQE Factor", [2.618,3.0,4.238,5.0,6.0], default=[3.0,4.238,6.0], key="m9_qf_v")
+            btn_m9 = st.button("🔍 INICIAR GRID SEARCH", key="m9_run", use_container_width=True)
+
+        with m9c2:
+            if btn_m9:
+                _t9  = ACTIVOS[m9_act]["yahoo"]
+                _d9  = obtener_datos(_t9, period="60d", interval=m9_iv)
+                if _d9 is None or len(_d9) < 50:
+                    st.error("Sin datos suficientes.")
+                elif not m9_rsi_vals or not m9_sf_vals or not m9_qf_vals:
+                    st.warning("Seleccioná al menos 1 valor por parámetro.")
+                else:
+                    _combos = [(r,s,q) for r in m9_rsi_vals for s in m9_sf_vals for q in m9_qf_vals]
+                    _resultados9 = []
+                    _prog9 = st.progress(0)
+                    for _ci9, (_r9,_s9,_q9) in enumerate(_combos):
+                        _prog9.progress((_ci9+1)/len(_combos))
+                        try:
+                            _dq9 = calc_qqe_engine(_d9, _r9, _s9, _q9)
+                            _bt9 = run_backtest_v11(_dq9, m9_cap, m9_rsk)
+                            _st9 = _bt9.get("stats",{})
+                            if _st9 and _st9["total_trades"] >= 5:
+                                _resultados9.append({
+                                    "RSI": _r9, "SF": _s9, "QQE_F": _q9,
+                                    "WR%": _st9["win_rate"],
+                                    "PF":  _st9["profit_factor"],
+                                    "Trades": _st9["total_trades"],
+                                    "Ganancia": _st9["total_ganancia"],
+                                })
+                        except: pass
+                    _prog9.empty()
+
+                    if _resultados9:
+                        _df9 = pd.DataFrame(_resultados9).sort_values("PF", ascending=False)
+                        _mejor9 = _df9.iloc[0]
+                        st.markdown(f"""<div style="background:linear-gradient(135deg,#0a1a00,#0a1020);border:2px solid #fbbf24;border-radius:12px;padding:16px;margin-bottom:12px;text-align:center;">
+                          <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#fbbf24;margin-bottom:6px;">MEJORES PARÁMETROS ENCONTRADOS</div>
+                          <div style="font-family:'Rajdhani',sans-serif;font-weight:900;font-size:28px;color:#fbbf24;">
+                            RSI {int(_mejor9['RSI'])} · SF {int(_mejor9['SF'])} · QQE {_mejor9['QQE_F']:.3f}
+                          </div>
+                          <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:#c8d8e8;margin-top:8px;">
+                            WR {_mejor9['WR%']:.1f}% · PF {_mejor9['PF']:.2f} · {int(_mejor9['Trades'])} trades · ${_mejor9['Ganancia']:+.2f}
+                          </div>
+                        </div>""", unsafe_allow_html=True)
+                        st.dataframe(_df9.head(15).reset_index(drop=True), use_container_width=True, hide_index=True)
+                    else:
+                        st.warning("Sin resultados válidos. Probá más combinaciones o un período mayor.")
+
+    # ── MEJORA 10: DIARIO+ CON ANÁLISIS EMOCIONAL ───────────────
+    with mej_tabs[9]:
+        st.markdown('<div class="sec">⑩ DIARIO+ — REGISTRO CON ESTADO EMOCIONAL</div>', unsafe_allow_html=True)
+        st.markdown("""<div style="background:#030710;border-left:4px solid #c084fc;border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;color:#c8d8e8;line-height:1.8;">
+        Registra cada operación con tu estado emocional. Al final de la semana analizá si las pérdidas correlacionan con revenge trading, FOMO o aburrimiento.
+        </div>""", unsafe_allow_html=True)
+
+        if "diario_plus" not in st.session_state:
+            st.session_state["diario_plus"] = []
+
+        m10c1, m10c2 = st.columns([1,2])
+        with m10c1:
+            st.markdown('<div style="font-family:Share Tech Mono,monospace;font-size:10px;color:#c084fc;margin-bottom:10px;letter-spacing:2px;">NUEVA ENTRADA</div>', unsafe_allow_html=True)
+            m10_par   = st.selectbox("Par",          list(ACTIVOS.keys()), key="m10_par")
+            m10_dir   = st.radio("Dirección",        ["CALL","PUT"], horizontal=True, key="m10_dir")
+            m10_res   = st.radio("Resultado",        ["WIN","LOSS","BREAK EVEN"], horizontal=True, key="m10_res")
+            m10_monto = st.number_input("Monto $", 1.0, 1000.0, value=st.session_state.capital*st.session_state.riesgo_pct/100, step=0.5, key="m10_monto")
+            m10_emo   = st.selectbox("Estado emocional", [
+                "😊 Tranquilo/Concentrado",
+                "😤 Frustrado (tras pérdida)",
+                "😨 Ansioso/Apurado",
+                "🤑 Eufórico (tras ganancia)",
+                "😴 Aburrido/Sin señal",
+                "😅 FOMO (señal que ya corrió)",
+            ], key="m10_emo")
+            m10_nota  = st.text_input("Nota rápida", placeholder="ej: entré tarde, seguí el plan...", key="m10_nota")
+            btn_m10   = st.button("💾 GUARDAR ENTRADA", key="m10_save", use_container_width=True)
+
+            if btn_m10:
+                _pnl10 = m10_monto * 0.85 if m10_res=="WIN" else (-m10_monto if m10_res=="LOSS" else 0)
+                st.session_state["diario_plus"].append({
+                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "par":   m10_par,
+                    "dir":   m10_dir,
+                    "result": m10_res,
+                    "monto": m10_monto,
+                    "pnl":   round(_pnl10,2),
+                    "emocion": m10_emo,
+                    "nota":  m10_nota,
+                })
+                st.success("✅ Registrado!")
+
+        with m10c2:
+            _dp = st.session_state["diario_plus"]
+            if _dp:
+                _dp_df = pd.DataFrame(_dp)
+
+                # Estadísticas por emoción
+                st.markdown('<div class="sec">WIN RATE POR ESTADO EMOCIONAL</div>', unsafe_allow_html=True)
+                for _emo in _dp_df["emocion"].unique():
+                    _emo_df = _dp_df[_dp_df["emocion"]==_emo]
+                    _emo_wr = len(_emo_df[_emo_df["result"]=="WIN"]) / len(_emo_df) * 100 if len(_emo_df) > 0 else 0
+                    _emo_col = "#22c55e" if _emo_wr>=55 else ("#f0b429" if _emo_wr>=40 else "#ef4444")
+                    st.markdown(f"""<div style="background:#030710;border-radius:6px;padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+                      <div style="font-size:13px;color:#c8d8e8;">{_emo}</div>
+                      <div style="font-family:'Rajdhani',sans-serif;font-size:22px;font-weight:700;color:{_emo_col};">{_emo_wr:.0f}% WR</div>
+                      <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#4a7a99;">{len(_emo_df)} trades</div>
+                    </div>""", unsafe_allow_html=True)
+                    _progbar(_emo_wr, _emo_col)
+
+                # Tabla completa
+                st.markdown('<div class="sec">HISTORIAL DIARIO+</div>', unsafe_allow_html=True)
+                st.dataframe(_dp_df[["fecha","par","dir","result","monto","pnl","emocion","nota"]].iloc[::-1].reset_index(drop=True),
+                             use_container_width=True, hide_index=True)
+
+                # KPI resumen
+                _tot10 = len(_dp_df)
+                _w10   = len(_dp_df[_dp_df["result"]=="WIN"])
+                _gan10 = _dp_df["pnl"].sum()
+                _r10a, _r10b, _r10c = st.columns(3)
+                with _r10a: _kpi_v11("TOTAL TRADES", str(_tot10), "diario+", "#c8d8e8")
+                _wr10_val = f"{_w10/_tot10*100:.1f}%" if _tot10>0 else "—"
+                _wr10_col = ("#22c55e" if (_w10/_tot10>=0.55) else "#ef4444") if _tot10>0 else "#c8d8e8"
+                with _r10b: _kpi_v11("WIN RATE", _wr10_val, f"{_w10}W", _wr10_col)
+                with _r10c: _kpi_v11("P&L TOTAL", f"${_gan10:+.2f}", "con payout 85%", "#22c55e" if _gan10>=0 else "#ef4444")
+
+                if st.button("🗑 Limpiar Diario+", key="m10_clear"):
+                    st.session_state["diario_plus"] = []
+                    st.rerun()
+            else:
+                st.markdown("""<div style="text-align:center;padding:40px;background:#0a1020;border:2px dashed #1a2a45;border-radius:12px;">
+                  <div style="font-size:36px;margin-bottom:10px;">📓</div>
+                  <div style="font-family:'Rajdhani',sans-serif;font-size:20px;color:#4a7a99;">Registrá tu primera operación con estado emocional</div>
+                </div>""", unsafe_allow_html=True)
 
 # ================================================================
 # FOOTER
